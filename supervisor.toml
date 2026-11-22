@@ -1,0 +1,25 @@
+# All settings are optional; these are the defaults.
+
+[ollama]
+ollama_url = "http://192.168.50.95:11434"
+model = "qwen-abl:latest"
+# Must stay well below the model's context window (qwen-abl: 49152) so the
+# model always has room to reply. OpenHands summarizes history to fit this.
+max_input_tokens = 34000
+max_output_tokens = 8000
+temperature = 0.7
+llm_timeout = 900
+
+[agent]
+server_image = "ghcr.io/openhands/agent-server:latest-python"
+iterations_per_turn = 40   # tool calls before the supervisor checks in
+setup_timeout = 1800
+check_timeout = 900
+
+[limits]
+max_turns_per_conversation = 8
+max_restarts_per_milestone = 3   # then it asks you
+max_consecutive_errors = 3
+max_questions_per_milestone = 4
+stagnant_turns = 3               # same check failure this many turns -> restart
+check_output_chars = 2500
