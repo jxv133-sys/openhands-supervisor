@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenHands Supervisor</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1d212a; --border: #2a2f3a;
+    --text: #e6e8ee; --dim: #8b93a5; --accent: #7c9cff; --accent2: #5b7cf0;
+    --ok: #3ecf8e; --warn: #f5b342; --bad: #ff6b6b; --purple: #c792ea;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  button, input, textarea, select { font: inherit; color: inherit; }
+  button { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 12px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent2); border-color: var(--accent2); color: #fff; font-weight: 600; }
+  button.danger { border-color: #5a2b2b; color: var(--bad); }
+  button.small { padding: 2px 8px; font-size: 12px; }
+  input, textarea, select { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 8px; width: 100%; }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; }
+  .mono { font-family: var(--mono); font-size: 12.5px; }
+  .dim { color: var(--dim); }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .grow { flex: 1; }
+  .hidden { display: none !important; }
+
+  header { height: 48px; display: flex; align-items: center; gap: 12px; padding: 0 16px;
+    border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 15px; margin: 0; font-weight: 650; }
+  .chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--dim); }
+  .chip.running { color: var(--ok); border-color: #1f5c43; }
+  .chip.waiting { color: var(--warn); border-color: #6b5320; }
+  .chip.failed { color: var(--bad); border-color: #5a2b2b; }
+
+  .layout { display: grid; grid-template-columns: 240px 1fr; height: calc(100% - 48px); }
+  aside { border-right: 1px solid var(--border); background: var(--panel); overflow-y: auto; padding: 12px; }
+  aside button.new { width: 100%; margin-bottom: 12px; }
+  .proj { padding: 8px 10px; border-radius: 6px; cursor: pointer; margin-bottom: 4px; border: 1px solid transparent; }
+  .proj:hover { background: var(--panel2); }
+  .proj.active { background: var(--panel2); border-color: var(--border); }
+  .proj .name { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); display: inline-block; }
+  .dot.waiting { background: var(--warn); }
+  .bar { height: 4px; background: var(--border); border-radius: 2px; margin-top: 6px; overflow: hidden; display: flex; }
+  .bar .done { background: var(--ok); } .bar .skip { background: var(--warn); }
+
+  main { overflow: hidden; display: flex; flex-direction: column; }
+  .scroll { overflow-y: auto; padding: 20px 24px; }
+  .welcome { max-width: 640px; margin: 60px auto; color: var(--dim); }
+  .welcome h2 { color: var(--text); }
+
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
+  label { display: block; font-size: 12px; color: var(--dim); margin: 10px 0 4px; }
+  label:first-child { margin-top: 0; }
+
+  .project { display: grid; grid-template-columns: minmax(380px, 1fr) minmax(380px, 1fr); gap: 0; height: 100%; }
+  .project > .scroll:first-child { border-right: 1px solid var(--border); }
+  .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+  .toolbar h2 { margin: 0 8px 0 0; font-size: 18px; }
+  .unsaved { color: var(--warn); font-size: 12px; }
+
+  .ms { position: relative; }
+  .ms.st-done { border-left: 3px solid var(--ok); }
+  .ms.st-skipped { border-left: 3px solid var(--warn); }
+  .ms.st-current { border-left: 3px solid var(--accent); box-shadow: 0 0 0 1px #2c3a66; }
+  .ms .head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .ms .num { color: var(--dim); font-weight: 600; min-width: 20px; }
+  .ms .head input { flex: 1 1 240px; min-width: 0; font-weight: 600; }
+  .ms .head select { width: 110px; }
+  .ms .meta { font-size: 12px; color: var(--dim); margin-top: 6px; }
+
+  .escalation { border-color: #6b5320; background: #211c12; }
+  .escalation h3 { margin: 0 0 6px; color: var(--warn); font-size: 15px; }
+  pre { white-space: pre-wrap; word-break: break-word; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px; max-height: 220px; overflow: auto; margin: 6px 0; }
+
+  .feedwrap { display: flex; flex-direction: column; height: 100%; }
+  .feedhead { padding: 12px 24px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: center; }
+  .feedhead h3 { margin: 0; font-size: 14px; }
+  .feedhead label { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 12px; }
+  .feedhead input { width: auto; }
+  #feed { flex: 1; overflow-y: auto; padding: 12px 24px; font-size: 13px; }
+  .ev { padding: 3px 0; border-bottom: 1px dashed #20242d; white-space: pre-wrap; word-break: break-word; }
+  .ev .t { color: var(--dim); font-family: var(--mono); font-size: 11px; margin-right: 8px; }
+  .ev.say .who { color: var(--purple); font-weight: 600; margin-right: 6px; }
+  .ev.agent { color: var(--dim); font-family: var(--mono); font-size: 12px; border-bottom: none; padding: 1px 0 1px 14px; }
+  .ev.turn { color: var(--text); }
+  .ev.divider { border: none; margin: 14px 0 6px; font-weight: 650; color: var(--accent); }
+  .badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); margin-right: 4px; }
+  .badge.ok { color: var(--ok); border-color: #1f5c43; } .badge.bad { color: var(--bad); border-color: #5a2b2b; }
+  .badge.act { color: var(--accent); border-color: #2c3a66; }
+  .toast { position: fixed; bottom: 16px; right: 16px; background: #3a1d1d; border: 1px solid #5a2b2b; color: #ffd6d6;
+    padding: 10px 14px; border-radius: 8px; max-width: 420px; z-index: 10; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (max-width: 1000px) {
+    .layout { grid-template-columns: 1fr; } aside { display: none; }
+    .project { grid-template-columns: 1fr; } .feedwrap { height: 60vh; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>OpenHands Supervisor</h1>
+  <span class="chip" id="model"></span>
+  <span class="grow"></span>
+  <span class="chip" id="jobchip">idle</span>
+</header>
+<div class="layout">
+  <aside>
+    <button class="new primary" id="newbtn">+ New project</button>
+    <div id="projects"></div>
+  </aside>
+  <main id="main"></main>
+</div>
+<div class="toast hidden" id="toast"></div>
+
+<template id="tpl-welcome">
+  <div class="scroll"><div class="welcome">
+    <h2>Supervise a local coding agent</h2>
+    <p>Describe what to build. Your local model plans it into small milestones, each with a check
+      command that defines "done". OpenHands then works through them in a sandbox while the
+      supervisor keeps it on track: verifying "done" for real, answering its questions, and
+      restarting it when it gets lost.</p>
+    <p>Start with <b>+ New project</b>, or pick one on the left.</p>
+  </div></div>
+</template>
+
+<template id="tpl-new">
+  <div class="scroll"><div style="max-width: 760px">
+    <h2 style="margin-top:0">New project</h2>
+    <div class="card">
+      <label>Project name (folder under projects/)</label>
+      <input id="np-name" placeholder="todo-rs" autocomplete="off">
+      <label>What should be built? Be concrete: language, features, how it's used, where data lives.</label>
+      <textarea id="np-goal" rows="12" placeholder="A Rust command-line todo app with add, list, done and remove commands that stores tasks in a JSON file"></textarea>
+      <div class="row" style="margin-top:12px">
+        <button class="primary" id="np-plan">Plan milestones</button>
+        <span id="np-status" class="dim"></span>
+      </div>
+    </div>
+    <p class="dim">Planning is one call to your local model (about 30 seconds). You can review and edit
+      the plan before anything runs.</p>
+  </div></div>
+</template>
+
+<template id="tpl-project">
+  <div class="project">
+    <div class="scroll">
+      <div class="toolbar">
+        <h2 id="p-name"></h2>
+        <span class="chip" id="p-progress"></span>
+        <span class="grow"></span>
+        <span class="unsaved hidden" id="p-unsaved">unsaved changes</span>
+        <button id="p-save" disabled>Save</button>
+        <button class="primary" id="p-run">Run</button>
+        <button class="danger hidden" id="p-stop">Stop</button>
+      </div>
+      <div id="p-jobmsg" class="card hidden"></div>
+      <div id="p-esc" class="card escalation hidden">
+        <h3>The agent needs your help</h3>
+        <div><b id="esc-ms"></b> <span class="dim" id="esc-reason"></span></div>
+        <div id="esc-agentwrap"><label>Agent said</label><pre id="esc-agent"></pre></div>
+        <label>Check output (<span class="mono" id="esc-check"></span>)</label>
+        <pre class="mono" id="esc-output"></pre>
+        <label>Guidance for the agent (added to this milestone's notes, then it retries fresh)</label>
+        <textarea id="esc-text" rows="3" placeholder="e.g. Use serde_json::from_str, and put the tests in src/storage.rs"></textarea>
+        <div class="row" style="margin-top:8px">
+          <button class="primary" id="esc-retry">Retry with guidance</button>
+          <button id="esc-skip">Skip milestone</button>
+          <button class="danger" id="esc-stop">Stop run</button>
+        </div>
+      </div>
+      <div class="card">
+        <label>Goal</label>
+        <textarea id="p-goal" rows="4"></textarea>
+        <label>Setup commands (one per line; run in the sandbox before the agent starts, every run)</label>
+        <textarea id="p-setup" class="mono" rows="2"></textarea>
+      </div>
+      <div id="p-ms"></div>
+      <button id="p-add">+ Add milestone</button>
+    </div>
+    <div class="feedwrap">
+      <div class="feedhead">
+        <h3>Activity</h3>
+        <span class="grow"></span>
+        <label><input type="checkbox" id="f-agent" checked> agent steps</label>
+        <label><input type="checkbox" id="f-follow" checked> follow</label>
+      </div>
+      <div id="feed"></div>
+    </div>
+  </div>
+</template>
+
+<script>
+"use strict";
+const $ = (sel, root = document) => root.querySelector(sel);
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") n.className = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else if (k === "text") n.textContent = v;
+    else n.setAttribute(k, v);
+  }
+  for (const kid of kids) if (kid != null) n.append(kid);
+  return n;
+};
+
+const S = {
+  state: null,      // /api/state
+  view: "welcome",  // welcome | new | project
+  current: null,    // project name
+  project: null,    // /api/projects/<name>
+  draft: null,      // editable copy of contract
+  dirty: false,
+  lastEvent: 0,
+  feedCount: 0,
+};
+
+// ---------- API ----------
+async function api(method, path, body) {
+  const headers = { "Content-Type": "application/json" };
+  const token = localStorage.getItem("supervisorToken");
+  if (token) headers["X-Token"] = token;
+  const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  if (res.status === 401) {
+    const t = prompt("This supervisor needs its access token (WEB_TOKEN):");
+    if (t) { localStorage.setItem("supervisorToken", t); return api(method, path, body); }
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.remove("hidden");
+  clearTimeout(toast._h); toast._h = setTimeout(() => t.classList.add("hidden"), 6000);
+}
+
+// ---------- state ----------
+async function refreshState() {
+  S.state = await api("GET", "/api/state");
+  $("#model").textContent = S.state.model;
+  renderSidebar(); renderJobChip();
+  if (S.view === "project") renderProjectChrome();
+}
+async function loadProject(name, { keepDraft = false } = {}) {
+  S.project = await api("GET", `/api/projects/${encodeURIComponent(name)}`);
+  if (!keepDraft || !S.dirty) { S.draft = structuredClone(S.project.contract); setDirty(false); }
+}
+const job = () => S.state && S.state.job;
+const jobActive = () => !!(job() && job().active);
+const jobHere = () => jobActive() && job().project === S.current;
+
+// ---------- sidebar & chips ----------
+function renderSidebar() {
+  const box = $("#projects"); box.replaceChildren();
+  const projects = [...S.state.projects].sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
+  if (!projects.length && !S.state.planning.length) box.append(el("div", { class: "dim", text: "No projects yet." }));
+  for (const p of projects) {
+    const running = jobActive() && job().project === p.name;
+    const waiting = running && job().escalation;
+    const name = el("div", { class: "name" }, running ? el("span", { class: "dot" + (waiting ? " waiting" : "") }) : null, p.name);
+    const bar = el("div", { class: "bar" });
+    if (p.total) {
+      bar.append(el("div", { class: "done", style: `width:${100 * p.done / p.total}%` }));
+      bar.append(el("div", { class: "skip", style: `width:${100 * (p.skipped || 0) / p.total}%` }));
+    }
+    const meta = el("div", { class: "dim", style: "font-size:12px", text: p.error ? "invalid plan" : `${p.done}/${p.total} milestones` });
+    box.append(el("div", { class: "proj" + (S.current === p.name && S.view === "project" ? " active" : ""), onclick: () => openProject(p.name) }, name, meta, bar));
+  }
+  for (const name of S.state.planning) {
+    box.append(el("div", { class: "proj" }, el("div", { class: "name" }, el("span", { class: "spinner" }), name), el("div", { class: "dim", style: "font-size:12px", text: "planning..." })));
+  }
+}
+function renderJobChip() {
+  const chip = $("#jobchip"); const j = job();
+  chip.className = "chip";
+  if (!j) { chip.textContent = "idle"; return; }
+  if (j.active && j.escalation) { chip.classList.add("waiting"); chip.textContent = `${j.project}: needs your help`; }
+  else if (j.active) { chip.classList.add("running"); chip.textContent = `${j.project}: ${j.status}`; }
+  else if (j.status === "failed") { chip.classList.add("failed"); chip.textContent = `${j.project}: failed`; }
+  else chip.textContent = `${j.project}: ${j.status}`;
+  chip.style.cursor = "pointer"; chip.onclick = () => openProject(j.project);
+}
+
+// ---------- views ----------
+function show(tplId) { $("#main").replaceChildren($(tplId).content.cloneNode(true)); }
+
+function openWelcome() { S.view = "welcome"; S.current = null; show("#tpl-welcome"); renderSidebar(); }
+
+function openNew() {
+  if (!confirmLeave()) return;
+  S.view = "new"; S.current = null; show("#tpl-new"); renderSidebar();
+  if (S.state.default_goal) $("#np-goal").value = S.state.default_goal;
+  $("#np-plan").onclick = async () => {
+    const name = $("#np-name").value.trim(), goal = $("#np-goal").value.trim();
+    if (!name || !goal) return toast("Give the project a name and describe what to build.");
+    $("#np-plan").disabled = true;
+    $("#np-status").replaceChildren(el("span", { class: "spinner" }), ` Planning with ${S.state.model}...`);
+    try {
+      await api("POST", "/api/projects", { name, goal });
+      await refreshState(); await openProject(name, true);
+    } catch (e) {
+      toast(e.message); $("#np-plan").disabled = false; $("#np-status").textContent = "";
+    }
+  };
+}
+
+async function openProject(name, skipConfirm = false) {
+  if (!skipConfirm && S.current !== name && !confirmLeave()) return;
+  try { await loadProject(name); } catch (e) { return toast(e.message); }
+  S.view = "project"; S.current = name; show("#tpl-project");
+  $("#p-name").textContent = name;
+  $("#p-goal").oninput = () => { S.draft.goal = $("#p-goal").value; setDirty(true); };
+  $("#p-setup").oninput = () => { S.draft.setup = $("#p-setup").value.split("\n").map(s => s.trim()).filter(Boolean); setDirty(true); };
+  $("#p-save").onclick = () => save();
+  $("#p-run").onclick = run;
+  $("#p-stop").onclick = stop;
+  $("#p-add").onclick = () => { S.draft.milestones.push({ title: "", instructions: "", check: "", status: "pending", restarts: 0, notes: [] }); setDirty(true); renderMilestones(); };
+  $("#esc-retry").onclick = () => answer("guidance");
+  $("#esc-skip").onclick = () => answer("skip");
+  $("#esc-stop").onclick = () => answer("stop");
+  $("#f-agent").onchange = () => $("#feed").querySelectorAll(".ev.agent").forEach(n => n.classList.toggle("hidden", !$("#f-agent").checked));
+  renderEditor(); renderProjectChrome(); renderSidebar();
+  // history from disk, then live events continue appending
+  $("#feed").replaceChildren(); S.feedCount = 0;
+  for (const rec of S.project.log) addFeed(rec);
+  scrollFeed(true);
+}
+
+function confirmLeave() {
+  return !S.dirty || confirm("Discard unsaved changes to the plan?");
+}
+function setDirty(d) {
+  S.dirty = d;
+  if (S.view !== "project") return;
+  $("#p-unsaved").classList.toggle("hidden", !d);
+  $("#p-save").disabled = !d || jobHere();
+}
+
+function renderEditor() {
+  $("#p-goal").value = S.draft.goal;
+  $("#p-setup").value = (S.draft.setup || []).join("\n");
+  renderMilestones();
+}
+
+function currentMilestoneIndex() {
+  if (!jobHere()) return -1;
+  return S.draft.milestones.findIndex(m => m.status === "pending");
+}
+
+function renderMilestones() {
+  S.msKey = `${jobHere()}|${currentMilestoneIndex()}`;
+  const box = $("#p-ms"); box.replaceChildren();
+  const locked = jobHere(); const cur = currentMilestoneIndex();
+  S.draft.milestones.forEach((m, i) => {
+    const upd = (k) => (e) => { m[k] = e.target.value; setDirty(true); if (k === "status") renderMilestones(); };
+    const status = el("select", { onchange: upd("status") },
+      ...["pending", "done", "skipped"].map(s => { const o = el("option", { value: s, text: s }); if (m.status === s) o.selected = true; return o; }));
+    const move = (d) => () => { const j = i + d; if (j < 0 || j >= S.draft.milestones.length) return;
+      [S.draft.milestones[i], S.draft.milestones[j]] = [S.draft.milestones[j], S.draft.milestones[i]]; setDirty(true); renderMilestones(); };
+    const del = () => { if (confirm(`Delete milestone ${i + 1}?`)) { S.draft.milestones.splice(i, 1); setDirty(true); renderMilestones(); } };
+    const title = el("input", { value: m.title, placeholder: "Milestone title", oninput: upd("title") });
+    const head = el("div", { class: "head" }, el("span", { class: "num", text: `${i + 1}.` }), title, status,
+      el("button", { class: "small", title: "Move up", onclick: move(-1), text: "↑" }),
+      el("button", { class: "small", title: "Move down", onclick: move(1), text: "↓" }),
+      el("button", { class: "small danger", title: "Delete", onclick: del, text: "✕" }));
+    const instr = el("textarea", { rows: "2", placeholder: "What to build, concretely", oninput: upd("instructions") }); instr.value = m.instructions || "";
+    const check = el("input", { class: "mono", value: m.check, placeholder: "cargo test test_add", oninput: upd("check") });
+    const notes = el("textarea", { rows: "1", placeholder: "Hints for the agent (one per line)",
+      oninput: (e) => { m.notes = e.target.value.split("\n").map(s => s.trim()).filter(Boolean); setDirty(true); } });
+    notes.value = (m.notes || []).join("\n");
+    const meta = el("div", { class: "meta", text: [i === cur ? "▶ in progress" : "", m.restarts ? `${m.restarts} restart(s)` : ""].filter(Boolean).join(" · ") });
+    const card = el("div", { class: `card ms st-${i === cur ? "current" : m.status}` }, head,
+      el("label", { text: "Instructions" }), instr,
+      el("label", { text: "Check command (exit code 0 = done)" }), check,
+      el("label", { text: "Notes / guidance" }), notes, meta);
+    card.querySelectorAll("input, textarea, select, button").forEach(n => n.disabled = locked);
+    box.append(card);
+  });
+  $("#p-add").disabled = locked;
+  $("#p-goal").disabled = locked; $("#p-setup").disabled = locked;
+}
+
+function renderProjectChrome() {
+  if (S.view !== "project") return;
+  const p = S.state.projects.find(x => x.name === S.current);
+  $("#p-progress").textContent = p ? `${p.done}/${p.total} done` : "";
+  const here = jobHere(); const j = job();
+  $("#p-run").classList.toggle("hidden", here);
+  $("#p-stop").classList.toggle("hidden", !here);
+  $("#p-stop").disabled = here && j.status === "stopping";
+  $("#p-run").disabled = jobActive();
+  $("#p-run").title = jobActive() ? `'${j.project}' is running` : "";
+  $("#p-save").disabled = !S.dirty || here;
+  // job message
+  const msg = $("#p-jobmsg");
+  if (j && j.project === S.current && j.message && !j.escalation) {
+    msg.textContent = j.message; msg.classList.remove("hidden");
+    msg.style.borderColor = j.status === "failed" ? "#5a2b2b" : "";
+  } else msg.classList.add("hidden");
+  // escalation
+  const esc = here && j.escalation;
+  $("#p-esc").classList.toggle("hidden", !esc);
+  if (esc) {
+    $("#esc-ms").textContent = esc.milestone;
+    $("#esc-reason").textContent = esc.reason;
+    $("#esc-agentwrap").classList.toggle("hidden", !esc.agent_text);
+    $("#esc-agent").textContent = esc.agent_text || "";
+    $("#esc-check").textContent = esc.check;
+    $("#esc-output").textContent = esc.check_output || "(no output)";
+  }
+  // Re-render the editor only when lock/progress state changes, so a live
+  // update never steals focus from a field you're typing in.
+  const key = `${here}|${currentMilestoneIndex()}`;
+  if (key !== S.msKey) { S.msKey = key; renderMilestones(); }
+}
+
+// ---------- actions ----------
+async function save(quiet) {
+  try {
+    S.project = await api("PUT", `/api/projects/${encodeURIComponent(S.current)}`, { contract: S.draft });
+    S.draft = structuredClone(S.project.contract); setDirty(false); renderEditor();
+    await refreshState();
+    return true;
+  } catch (e) { toast(e.message); return false; }
+}
+async function run() {
+  if (S.dirty && !(await save())) return;
+  try { await api("POST", `/api/projects/${encodeURIComponent(S.current)}/run`); await refreshState(); }
+  catch (e) { toast(e.message); }
+}
+async function stop() {
+  try { await api("POST", "/api/stop"); await refreshState(); } catch (e) { toast(e.message); }
+}
+async function answer(action) {
+  const text = $("#esc-text").value;
+  if (action === "guidance" && !text.trim()) return toast("Write some guidance first.");
+  if (action === "stop" && !confirm("Stop the run? Progress is saved.")) return;
+  try { await api("POST", "/api/answer", { action, text }); $("#esc-text").value = ""; await refreshState(); }
+  catch (e) { toast(e.message); }
+}
+
+// ---------- activity feed ----------
+const time = (ts) => (ts || "").slice(11, 19);
+function addFeed(r) {
+  const feed = $("#feed"); if (!feed) return;
+  let node = null;
+  switch (r.kind) {
+    case "say":
+      if (r.text && r.text.startsWith("turn ended:")) break;  // shown by the "turn" row instead
+      if (r.text && r.text.startsWith("=== Milestone"))
+        node = el("div", { class: "ev divider", text: r.text.replace(/^=== /, "").replace(/\s+\(check: [\s\S]*\)$/, "") });
+      else node = el("div", { class: "ev say" }, el("span", { class: "t", text: time(r.ts) }), el("span", { class: "who", text: "supervisor" }), r.text || "");
+      break;
+    case "agent":
+      node = el("div", { class: "ev agent" + ($("#f-agent").checked ? "" : " hidden"), text: r.text });
+      break;
+    case "turn": {
+      const ok = r.check_passed;
+      node = el("div", { class: "ev turn" }, el("span", { class: "t", text: time(r.ts) }),
+        el("span", { class: "badge", text: `turn: ${r.end}` }),
+        el("span", { class: "badge", text: `${r.actions} actions · ${(r.changed || []).length} files` }),
+        el("span", { class: "badge " + (ok ? "ok" : "bad"), text: ok ? "check passed" : `check failed (${r.check_exit})` }),
+        el("span", { class: "badge act", text: (r.decision || "").toUpperCase() }), r.reason || "");
+      break;
+    }
+    case "escalate":
+      node = el("div", { class: "ev say" }, el("span", { class: "t", text: time(r.ts) }), el("span", { class: "who", text: "needs help" }), `${r.title}: ${r.reason}`);
+      break;
+    case "guidance":
+      node = el("div", { class: "ev say" }, el("span", { class: "t", text: time(r.ts) }), el("span", { class: "who", text: "you" }), r.note);
+      break;
+    case "job":
+      if (["finished", "stopped", "failed"].includes(r.status))
+        node = el("div", { class: "ev say" }, el("span", { class: "t", text: time(r.ts) }), el("span", { class: "who", text: r.status }), r.message || "");
+      break;
+  }
+  if (!node) return;
+  feed.append(node);
+  if (++S.feedCount > 2500) { feed.firstChild.remove(); S.feedCount--; }
+}
+function scrollFeed(force) {
+  const feed = $("#feed"); if (feed && (force || $("#f-follow").checked)) feed.scrollTop = feed.scrollHeight;
+}
+
+// ---------- live events ----------
+let refreshTimer = null;
+function scheduleRefresh(reloadProject) {
+  clearTimeout(refreshTimer);
+  refreshTimer = setTimeout(async () => {
+    try {
+      await refreshState();
+      if (reloadProject && S.view === "project" && !S.dirty) { await loadProject(S.current); renderEditor(); renderProjectChrome(); }
+    } catch (e) { /* transient */ }
+  }, 250);
+}
+async function pollEvents() {
+  for (;;) {
+    try {
+      const { events, last } = await api("GET", `/api/events?after=${S.lastEvent}`);
+      if (last < S.lastEvent) S.lastEvent = 0;  // server restarted
+      let refresh = false, reload = false;
+      for (const ev of events) {
+        S.lastEvent = Math.max(S.lastEvent, ev.id);
+        if (S.view === "project" && ev.project === S.current) addFeed(ev);
+        if (["job", "planning", "contract", "turn", "milestone_start", "skip", "guidance"].includes(ev.kind)) refresh = true;
+        if (["job", "contract", "turn", "skip", "guidance"].includes(ev.kind) && ev.project === S.current) reload = true;
+      }
+      if (events.length) scrollFeed(false);
+      if (refresh) scheduleRefresh(reload);
+    } catch (e) {
+      await new Promise(r => setTimeout(r, 3000));
+    }
+  }
+}
+
+// ---------- boot ----------
+$("#newbtn").onclick = openNew;
+window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ""; } });
+(async () => {
+  try { await refreshState(); } catch (e) { toast(e.message); return; }
+  S.lastEvent = S.state.last_event;
+  const j = job();
+  if (j && j.active) await openProject(j.project, true);
+  else if (S.state.projects.length) openWelcome();
+  else openNew();
+  pollEvents();
+})();
+</script>
+</body>
+</html>
