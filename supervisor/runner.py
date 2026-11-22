@@ -16,6 +16,7 @@ from . import progress
 from .collector import TurnCollector
 from .config import Settings
 from .contract import DONE, SKIPPED, Contract, Milestone
+from .hostpath import host_path
 from .log import RunLog
 from .prompts import PROJECT_DIR, handoff_note, milestone_prompt
 from .watchdog import Action, CheckResult, Decision, MilestoneState, decide
@@ -31,12 +32,25 @@ def _bash(cmd: str) -> str:
     return f"bash -lc {shlex.quote('set -o pipefail; ' + cmd)}"
 
 
+ESCALATE_MODES = ("ask", "stop", "skip")
+
+
 class Supervisor:
-    def __init__(self, settings: Settings, project_dir: Path, contract: Contract, log: RunLog):
+    def __init__(
+        self,
+        settings: Settings,
+        project_dir: Path,
+        contract: Contract,
+        log: RunLog,
+        on_escalate: str = "ask",
+    ):
+        if on_escalate not in ESCALATE_MODES:
+            raise ValueError(f"on_escalate must be one of {ESCALATE_MODES}, not {on_escalate!r}")
         self.settings = settings
         self.project_dir = Path(project_dir).resolve()
         self.contract = contract
         self.log = log
+        self.on_escalate = on_escalate  # ask = prompt in the terminal; stop/skip = unattended
 
     # --- sandbox helpers ------------------------------------------------
 
@@ -85,18 +99,19 @@ class Supervisor:
             self.log.say("All milestones are already done.")
             return True
 
-        self.log.say(f"Starting sandbox ({s.server_image}), project mounted at {PROJECT_DIR}")
+        mount_source = host_path(str(self.project_dir))
+        self.log.say(f"Starting sandbox ({s.server_image}), mounting {mount_source} at {PROJECT_DIR}")
         with DockerWorkspace(
             server_image=s.server_image,
             working_dir=PROJECT_DIR,
-            volumes=[f"{self.project_dir}:{PROJECT_DIR}"],
+            volumes=[f"{mount_source}:{PROJECT_DIR}"],
         ) as workspace:
             self._setup(workspace)
             try:
                 for milestone in pending:
                     self._run_milestone(workspace, agent, milestone)
             except Quit:
-                self.log.say("Stopped by user. Progress is saved; run again to resume.")
+                self.log.say("Stopped. Progress is saved; run again to resume.")
                 return False
             except KeyboardInterrupt:
                 self.log.say("Interrupted. Progress is saved; run again to resume.")
@@ -199,7 +214,23 @@ class Supervisor:
 
     def _escalate(self, milestone: Milestone, decision: Decision, check: CheckResult, state: MilestoneState) -> bool:
         """Ask the human. Returns True if the milestone was skipped."""
-        self.log.event("escalate", title=milestone.title, reason=decision.reason, detail=decision.message)
+        self.log.event(
+            "escalate", title=milestone.title, reason=decision.reason, detail=decision.message, mode=self.on_escalate
+        )
+        if self.on_escalate == "skip":
+            milestone.status = SKIPPED
+            self.contract.save(self.project_dir)
+            self.log.say(f"Agent can't finish '{milestone.title}' ({decision.reason}). Skipping it (ON_ESCALATE=skip).")
+            return True
+        if self.on_escalate == "stop":
+            self.log.say(
+                f"Agent needs help with '{milestone.title}': {decision.reason}\n"
+                f"Last check output:\n{check.output[-1500:]}\n"
+                "Stopping. To continue: add a hint to this milestone's \"notes\" in "
+                ".supervisor/contract.json and start again, or run interactively with\n"
+                "  docker compose run --rm supervisor run <project>"
+            )
+            raise Quit()
         print(
             "\n" + "=" * 70
             + f"\nThe agent needs help with: {milestone.title}\nReason: {decision.reason}\n"

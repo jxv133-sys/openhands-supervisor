@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import signal
 import sys
 from pathlib import Path
 
@@ -56,7 +58,61 @@ def cmd_run(args, settings: Settings) -> int:
         answer = input("\nStart? [Y/n] ").strip().lower()
         if answer not in ("", "y", "yes"):
             return 1
-    ok = Supervisor(settings, project, contract, RunLog(project)).run()
+    ok = Supervisor(settings, project, contract, RunLog(project), on_escalate=args.on_escalate).run()
+    return 0 if ok else 2
+
+
+def _truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def cmd_auto(args, settings: Settings) -> int:
+    """Unattended mode for `docker compose up`: everything comes from env vars.
+    Plans on first start (unless a plan exists), then runs it."""
+    from .planner import plan
+    from .runner import ESCALATE_MODES, Supervisor
+
+    project = Path(os.environ.get("PROJECT", "").strip() or "project")
+    goal = os.environ.get("GOAL", "").strip()
+    on_escalate = os.environ.get("ON_ESCALATE", "").strip().lower() or "stop"
+    if on_escalate not in ESCALATE_MODES:
+        print(f"ON_ESCALATE must be one of {', '.join(ESCALATE_MODES)}, not {on_escalate!r}")
+        return 1
+    if on_escalate == "ask":
+        print("Note: ON_ESCALATE=ask needs a terminal; attach with `docker attach <container>` to answer.")
+
+    contract_path = Contract.path_for(project)
+    if contract_path.exists():
+        contract = Contract.load(project)
+        if goal and goal != contract.goal:
+            print(
+                f"Note: project '{project}' already has a plan for a different goal; continuing that plan.\n"
+                f"To start the new goal, set a different PROJECT, or delete {contract_path}.\n"
+            )
+    else:
+        if not goal:
+            print(
+                "Nothing to do: no GOAL set and no existing plan.\n"
+                "Put your goal in .env (see .env.example), for example:\n"
+                '  PROJECT=todo-rs\n  GOAL="A Rust CLI todo app with add, list, done and remove commands"\n'
+                "then run `docker compose up --build` again."
+            )
+            return 1
+        project.mkdir(parents=True, exist_ok=True)
+        print(f"Planning '{project}' with {settings.model}...", flush=True)
+        contract = plan(goal, settings.ollama_url, settings.model, timeout=settings.llm_timeout)
+        contract.save(project)
+        if _truthy(os.environ.get("REVIEW_PLAN")):
+            _print_contract(contract)
+            print(
+                f"\nPlan saved to projects/{project}/.supervisor/contract.json (REVIEW_PLAN is on).\n"
+                "Review or edit it, then run `docker compose up` again to start."
+            )
+            return 0
+
+    _print_contract(contract)
+    print()
+    ok = Supervisor(settings, project, contract, RunLog(project), on_escalate=on_escalate).run()
     return 0 if ok else 2
 
 
@@ -67,7 +123,11 @@ def cmd_status(args, settings: Settings) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="supervisor", description=__doc__)
-    parser.add_argument("--config", default="supervisor.toml", help="settings file (default: ./supervisor.toml)")
+    parser.add_argument(
+        "--config",
+        default=os.environ.get("SUPERVISOR_CONFIG", "supervisor.toml"),
+        help="settings file (default: $SUPERVISOR_CONFIG or ./supervisor.toml)",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("plan", help="draft milestones for a goal")
@@ -79,7 +139,16 @@ def main(argv: list[str] | None = None) -> int:
     r = sub.add_parser("run", help="run (or resume) the milestones")
     r.add_argument("project")
     r.add_argument("-y", "--yes", action="store_true", help="don't ask before starting")
+    r.add_argument(
+        "--on-escalate",
+        choices=["ask", "stop", "skip"],
+        default="ask",
+        help="when the agent can't finish a milestone: ask you (default), stop, or skip it",
+    )
     r.set_defaults(func=cmd_run)
+
+    a = sub.add_parser("auto", help="unattended: plan if needed, then run (settings from env: PROJECT, GOAL, REVIEW_PLAN, ON_ESCALATE)")
+    a.set_defaults(func=cmd_auto)
 
     s = sub.add_parser("status", help="show milestone progress")
     s.add_argument("project")
@@ -87,7 +156,22 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
     settings = Settings.load(Path(args.config))
+    _install_sigterm_handler()
     return args.func(args, settings)
+
+
+def _install_sigterm_handler() -> None:
+    """`docker compose down`/Ctrl+C on `up` sends SIGTERM. Turn it into
+    KeyboardInterrupt so progress is saved and the agent sandbox container is
+    removed instead of being left running."""
+
+    def handler(signum, frame):
+        raise KeyboardInterrupt
+
+    try:
+        signal.signal(signal.SIGTERM, handler)
+    except (ValueError, AttributeError):  # not main thread / unsupported platform
+        pass
 
 
 if __name__ == "__main__":
