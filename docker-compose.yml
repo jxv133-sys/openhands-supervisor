@@ -1,9 +1,10 @@
 # Quick start:
-#   cp .env.example .env      # put your GOAL in it
+#   edit goal.md               # what to build
 #   docker compose up --build
 #
-# Code ends up in ./projects/<PROJECT>. Stop any time with Ctrl+C;
-# `docker compose up` again resumes from the next unfinished milestone.
+# Code ends up in ./projects/<PROJECT> (PROJECT defaults to "project"; set it in
+# .env, see .env.example). Stop any time with Ctrl+C; `docker compose up`
+# again resumes from the next unfinished milestone.
 #
 # Interactive mode (it asks you when the agent is stuck, instead of stopping):
 #   docker compose run --rm supervisor run <project>
@@ -19,13 +20,14 @@ services:
     tty: true
     environment:
       PROJECT: ${PROJECT:-project}
-      GOAL: ${GOAL:-}
       REVIEW_PLAN: ${REVIEW_PLAN:-0}
       ON_ESCALATE: ${ON_ESCALATE:-stop}
+      GOAL_FILE: /config/goal.md
       SUPERVISOR_CONFIG: /config/supervisor.toml
     volumes:
       # Lets the supervisor start OpenHands agent-server sandbox containers
       # (siblings on the host; visible in `docker ps` while running).
       - /var/run/docker.sock:/var/run/docker.sock
       - ./projects:/projects
-      - ./supervisor.toml:/config/supervisor.toml:ro
+      # This folder, read-only: goal.md and supervisor.toml.
+      - .:/config:ro

@@ -30,20 +30,24 @@ Needs a Linux machine with Docker, and an Ollama server reachable from it
 
 ```bash
 git clone <this repo> && cd openhands-supervisor
-cp .env.example .env        # put your GOAL (and a PROJECT name) in it
+nano goal.md                # describe what you want built
 docker compose up --build
 ```
 
-On first start it plans milestones for your goal, then works through them.
-The code ends up in `./projects/<PROJECT>`. Ctrl+C any time; `docker compose up`
-resumes from the next unfinished milestone.
+`goal.md` is the goal: write it like you'd brief a developer (language,
+features, how it's used). `<!-- comments -->` are ignored. On first start it
+plans milestones from it, then works through them. The code ends up in
+`./projects/<PROJECT>`. Ctrl+C any time; `docker compose up` resumes from the
+next unfinished milestone.
 
-`.env` options (see `.env.example`):
+The goal is only read when a project is first planned. For a new project,
+change `PROJECT` in `.env`; otherwise the existing plan just continues.
+
+Optional `.env` settings (copy `.env.example`):
 
 | Variable | Meaning |
 |---|---|
-| `PROJECT` | folder name under `./projects`; use a new one per project |
-| `GOAL` | what to build, in plain language (only used when planning a new project) |
+| `PROJECT` | folder name under `./projects` (default `project`); use a new one per project |
 | `REVIEW_PLAN` | `1` = stop after planning so you can edit `projects/<PROJECT>/.supervisor/contract.json`, then `up` again |
 | `ON_ESCALATE` | when the agent can't finish a milestone even after restarts: `stop` (default) or `skip` |
 

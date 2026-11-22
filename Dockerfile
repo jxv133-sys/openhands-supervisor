@@ -10,6 +10,7 @@ COPY supervisor ./supervisor
 RUN pip install --no-cache-dir .
 
 ENV SUPERVISOR_CONFIG=/config/supervisor.toml \
+    GOAL_FILE=/config/goal.md \
     PYTHONUNBUFFERED=1
 WORKDIR /projects
 ENTRYPOINT ["supervisor"]
