@@ -126,6 +126,14 @@ def cmd_auto(args, settings: Settings) -> int:
     return 0 if ok else 2
 
 
+def cmd_web(args, settings: Settings) -> int:
+    from .web import serve
+
+    goal_file = os.environ.get("GOAL_FILE", "").strip()
+    serve(settings, Path(args.projects), args.host, args.port, Path(goal_file) if goal_file else None)
+    return 0
+
+
 def cmd_status(args, settings: Settings) -> int:
     _print_contract(Contract.load(Path(args.project)))
     return 0
@@ -157,7 +165,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     r.set_defaults(func=cmd_run)
 
-    a = sub.add_parser("auto", help="unattended: plan from goal.md if needed, then run (env: PROJECT, GOAL_FILE, REVIEW_PLAN, ON_ESCALATE)")
+    w = sub.add_parser("web", help="web interface (default in Docker)")
+    w.add_argument("--host", default=os.environ.get("WEB_HOST", "0.0.0.0"))
+    w.add_argument("--port", type=int, default=int(os.environ.get("WEB_PORT", "8765")))
+    w.add_argument("--projects", default=".", help="folder holding the projects (default: current folder)")
+    w.set_defaults(func=cmd_web)
+
+    a = sub.add_parser("auto",help="unattended: plan from goal.md if needed, then run (env: PROJECT, GOAL_FILE, REVIEW_PLAN, ON_ESCALATE)")
     a.set_defaults(func=cmd_auto)
 
     s = sub.add_parser("status", help="show milestone progress")

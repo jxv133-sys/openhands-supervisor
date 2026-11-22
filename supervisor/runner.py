@@ -9,7 +9,8 @@ milestone's check inside the same sandbox, so it sees exactly what the agent see
 from __future__ import annotations
 
 import shlex
-import time
+import threading
+from collections.abc import Callable
 from pathlib import Path
 
 from . import progress
@@ -34,6 +35,37 @@ def _bash(cmd: str) -> str:
 
 ESCALATE_MODES = ("ask", "stop", "skip")
 
+# A custom escalation handler (used by the web UI) gets
+# (milestone, decision, check) and returns one of:
+#   ("guidance", "text")   retry the milestone with this hint
+#   ("skip", "")           skip the milestone
+#   ("stop", "")           stop the run
+EscalationHandler = Callable[[Milestone, Decision, CheckResult], tuple[str, str]]
+
+
+def describe_action(event) -> str:
+    """One short line for a live activity feed."""
+    kind = type(event).__name__
+    if kind == "ActionEvent":
+        tool = getattr(event, "tool_name", "?")
+        action = getattr(event, "action", None)
+        detail = ""
+        for attr in ("command", "path", "message"):
+            value = getattr(action, attr, None)
+            if value:
+                detail = str(value)
+                break
+        if tool == "file_editor" and getattr(action, "path", None):
+            detail = f"{getattr(action, 'command', '')} {action.path}".strip()
+        return f"{tool}: {detail}"[:300]
+    if kind == "MessageEvent" and getattr(event, "source", "") == "agent":
+        content = getattr(getattr(event, "llm_message", None), "content", None) or []
+        text = "".join(getattr(c, "text", "") or "" for c in content).strip()
+        return f"says: {text}"[:600] if text else ""
+    if kind == "AgentErrorEvent":
+        return f"error: {getattr(event, 'error', '')}"[:300]
+    return ""
+
 
 class Supervisor:
     def __init__(
@@ -42,15 +74,38 @@ class Supervisor:
         project_dir: Path,
         contract: Contract,
         log: RunLog,
-        on_escalate: str = "ask",
+        on_escalate: str | EscalationHandler = "ask",
     ):
-        if on_escalate not in ESCALATE_MODES:
+        if not callable(on_escalate) and on_escalate not in ESCALATE_MODES:
             raise ValueError(f"on_escalate must be one of {ESCALATE_MODES}, not {on_escalate!r}")
         self.settings = settings
         self.project_dir = Path(project_dir).resolve()
         self.contract = contract
         self.log = log
-        self.on_escalate = on_escalate  # ask = prompt in the terminal; stop/skip = unattended
+        # ask = prompt in the terminal; stop/skip = unattended; callable = custom (web UI)
+        self.on_escalate = on_escalate
+        self._stop = threading.Event()
+        self._conversation = None
+
+    def request_stop(self) -> None:
+        """Ask the run to stop (thread-safe). Pauses the agent mid-turn if one is
+        running; progress is saved and the run ends at the next safe point."""
+        self._stop.set()
+        conversation = self._conversation
+        if conversation is not None:
+            try:
+                conversation.pause()
+            except Exception:
+                pass
+
+    def _check_stop(self) -> None:
+        if self._stop.is_set():
+            raise Quit()
+
+    def _activity(self, kind: str, event) -> None:
+        line = describe_action(event)
+        if line:
+            self.log.publish("agent", text=line)
 
     # --- sandbox helpers ------------------------------------------------
 
@@ -106,9 +161,13 @@ class Supervisor:
             working_dir=PROJECT_DIR,
             volumes=[f"{mount_source}:{PROJECT_DIR}"],
         ) as workspace:
-            self._setup(workspace)
             try:
+                self._check_stop()
+                self._setup(workspace)
                 for milestone in pending:
+                    if milestone.status != "pending":  # e.g. skipped from the UI meanwhile
+                        continue
+                    self._check_stop()
                     self._run_milestone(workspace, agent, milestone)
             except Quit:
                 self.log.say("Stopped. Progress is saved; run again to resume.")
@@ -134,7 +193,7 @@ class Supervisor:
         self.log.event("milestone_start", n=n, title=milestone.title)
 
         while True:  # one iteration per conversation
-            collector = TurnCollector()
+            collector = TurnCollector(on_activity=self._activity)
             conversation = Conversation(
                 agent=agent,
                 workspace=workspace,
@@ -142,6 +201,7 @@ class Supervisor:
                 max_iteration_per_run=self.settings.iterations_per_turn,
                 stuck_detection=True,
             )
+            self._conversation = conversation
             message = milestone_prompt(self.contract, milestone, handoff)
             try:
                 while True:  # one iteration per turn
@@ -156,6 +216,7 @@ class Supervisor:
                     except Exception as exc:
                         exception = f"{type(exc).__name__}: {exc}"
                     collector.wait_until_quiet()
+                    self._check_stop()
                     status = _status_of(conversation)
                     changed = progress.changed_files(before, progress.snapshot(self.project_dir))
                     report = collector.report(status, exception, changed_files=len(changed))
@@ -207,34 +268,60 @@ class Supervisor:
                     )
                     break
             finally:
+                self._conversation = None
                 try:
                     conversation.close()
                 except Exception:
                     pass
 
     def _escalate(self, milestone: Milestone, decision: Decision, check: CheckResult, state: MilestoneState) -> bool:
-        """Ask the human. Returns True if the milestone was skipped."""
+        """Ask the human (or apply the unattended policy). Returns True if the
+        milestone was skipped, False to retry it; raises Quit to stop."""
+        mode = self.on_escalate if isinstance(self.on_escalate, str) else "custom"
         self.log.event(
-            "escalate", title=milestone.title, reason=decision.reason, detail=decision.message, mode=self.on_escalate
+            "escalate",
+            title=milestone.title,
+            reason=decision.reason,
+            detail=decision.message,
+            check_output=check.output[-2000:],
+            mode=mode,
         )
-        if self.on_escalate == "skip":
-            milestone.status = SKIPPED
-            self.contract.save(self.project_dir)
+        if mode == "skip":
             self.log.say(f"Agent can't finish '{milestone.title}' ({decision.reason}). Skipping it (ON_ESCALATE=skip).")
-            return True
-        if self.on_escalate == "stop":
+            action, text = "skip", ""
+        elif mode == "stop":
             self.log.say(
                 f"Agent needs help with '{milestone.title}': {decision.reason}\n"
                 f"Last check output:\n{check.output[-1500:]}\n"
                 "Stopping. To continue: add a hint to this milestone's \"notes\" in "
-                ".supervisor/contract.json and start again, or run interactively with\n"
-                "  docker compose run --rm supervisor run <project>"
+                ".supervisor/contract.json and start again, or use the web UI / interactive mode."
             )
+            action, text = "stop", ""
+        elif mode == "custom":
+            action, text = self.on_escalate(milestone, decision, check)
+        else:
+            action, text = self._ask_terminal(milestone, decision, check)
+
+        if action == "stop":
             raise Quit()
-        print(
-            "\n" + "=" * 70
-            + f"\nThe agent needs help with: {milestone.title}\nReason: {decision.reason}\n"
-        )
+        if action == "skip":
+            milestone.status = SKIPPED
+            self.contract.save(self.project_dir)
+            self.log.event("skip", title=milestone.title)
+            return True
+        # guidance
+        milestone.notes.append(text)
+        state.restarts = 0  # fresh budget after human guidance
+        state.questions = 0
+        state.new_conversation()
+        milestone.restarts = 0
+        self.contract.save(self.project_dir)
+        self.log.event("guidance", title=milestone.title, note=text)
+        self.log.say(f"Retrying '{milestone.title}' with your guidance.")
+        return False
+
+    def _ask_terminal(self, milestone: Milestone, decision: Decision, check: CheckResult) -> tuple[str, str]:
+        print("\n" + "=" * 70 + f"\nThe agent needs help with: {milestone.title}\nReason: {decision.reason}\n")
         if decision.message and decision.message != decision.reason:
             print(f"Agent said:\n{decision.message[-1500:]}\n")
         print(f"Last check output (`{milestone.check}`):\n{check.output[-1500:]}\n")
@@ -245,21 +332,11 @@ class Supervisor:
         while True:
             answer = input("> ").strip()
             if answer.lower() == "q":
-                raise Quit()
+                return "stop", ""
             if answer.lower() == "s":
-                milestone.status = SKIPPED
-                self.contract.save(self.project_dir)
-                self.log.event("skip", title=milestone.title)
-                return True
+                return "skip", ""
             if answer:
-                milestone.notes.append(answer)
-                state.restarts = 0  # fresh budget after human guidance
-                state.questions = 0
-                state.new_conversation()
-                milestone.restarts = 0
-                self.contract.save(self.project_dir)
-                self.log.event("guidance", title=milestone.title, note=answer)
-                return False
+                return "guidance", answer
 
 
 def _status_of(conversation) -> str:
