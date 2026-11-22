@@ -13,5 +13,6 @@ ENV SUPERVISOR_CONFIG=/config/supervisor.toml \
     GOAL_FILE=/config/goal.md \
     PYTHONUNBUFFERED=1
 WORKDIR /projects
+EXPOSE 8765
 ENTRYPOINT ["supervisor"]
-CMD ["auto"]
+CMD ["web"]

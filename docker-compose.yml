@@ -1,24 +1,31 @@
 # Quick start:
-#   edit goal.md               # what to build
-#   docker compose up --build
+#   docker compose up --build -d
+#   open http://<this-machine>:8765
 #
-# Code ends up in ./projects/<PROJECT> (PROJECT defaults to "project"; set it in
-# .env, see .env.example). Stop any time with Ctrl+C; `docker compose up`
-# again resumes from the next unfinished milestone.
+# Code ends up in ./projects/<name>. Runs survive closing the browser tab.
 #
-# Interactive mode (it asks you when the agent is stuck, instead of stopping):
+# Without the web UI (goal from goal.md, unattended):
+#   docker compose run --rm supervisor auto
+# Interactive terminal mode:
 #   docker compose run --rm supervisor run <project>
 
 services:
   supervisor:
     build: .
     image: openhands-supervisor:latest
+    command: ["web"]
+    restart: unless-stopped
     # Host networking: the supervisor reaches the agent sandbox it starts on
-    # localhost:<port>, and Ollama on your LAN. (Linux only.)
+    # localhost:<port>, and Ollama on your LAN. The web UI listens on the
+    # host's port 8765 directly (change with WEB_PORT). Linux only.
     network_mode: host
     stdin_open: true
     tty: true
     environment:
+      WEB_PORT: ${WEB_PORT:-8765}
+      # Optional: require this token to use the web UI (the page asks once).
+      WEB_TOKEN: ${WEB_TOKEN:-}
+      # Used by `auto` mode only:
       PROJECT: ${PROJECT:-project}
       REVIEW_PLAN: ${REVIEW_PLAN:-0}
       ON_ESCALATE: ${ON_ESCALATE:-stop}

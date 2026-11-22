@@ -30,38 +30,50 @@ Needs a Linux machine with Docker, and an Ollama server reachable from it
 
 ```bash
 git clone <this repo> && cd openhands-supervisor
-nano goal.md                # describe what you want built
-docker compose up --build
+docker compose up --build -d
 ```
 
-`goal.md` is the goal: write it like you'd brief a developer (language,
-features, how it's used). `<!-- comments -->` are ignored. On first start it
-plans milestones from it, then works through them. The code ends up in
-`./projects/<PROJECT>`. Ctrl+C any time; `docker compose up` resumes from the
-next unfinished milestone.
+Then open **http://<that-machine>:8765** in a browser.
 
-The goal is only read when a project is first planned. For a new project,
-change `PROJECT` in `.env`; otherwise the existing plan just continues.
+### Web interface
+
+- **New project**: name it, describe what to build (pre-filled from `goal.md`),
+  press *Plan milestones*. Your local model drafts the plan in ~30 seconds.
+- **Review the plan**: edit the goal, setup commands, and each milestone's
+  title, instructions, check command and notes. Reorder, add, delete, or set a
+  milestone back to `pending` to redo it. *Save*.
+- **Run**: watch it live on the right: each turn's outcome (actions, files
+  changed, check passed/failed, and what the supervisor decided), plus the
+  agent's individual steps.
+- **When the agent needs help**, a card shows why, what the agent said, and the
+  check's output. Type a hint and *Retry with guidance*, or *Skip* / *Stop*.
+- **Stop** any time; progress is saved, *Run* resumes. Runs keep going when you
+  close the tab; one run at a time (one GPU).
+
+The code ends up in `./projects/<name>` on the host.
 
 Optional `.env` settings (copy `.env.example`):
 
 | Variable | Meaning |
 |---|---|
-| `PROJECT` | folder name under `./projects` (default `project`); use a new one per project |
-| `REVIEW_PLAN` | `1` = stop after planning so you can edit `projects/<PROJECT>/.supervisor/contract.json`, then `up` again |
-| `ON_ESCALATE` | when the agent can't finish a milestone even after restarts: `stop` (default) or `skip` |
+| `WEB_PORT` | web UI port (default 8765) |
+| `WEB_TOKEN` | if set, the UI asks for this token. Anyone who can open the UI can make the agent run code in its sandbox, so set it on untrusted networks |
 
-When it stops for help, it prints why. Add a hint to that milestone's `notes`
-in the contract and `up` again, or run it interactively so it asks you in the
-terminal:
+Settings (model, context limits, restart limits) are in `supervisor.toml`; edit
+it and `docker compose restart`, no rebuild needed.
+
+### Without the web UI
 
 ```bash
+# Unattended: plans from goal.md into ./projects/$PROJECT, then runs.
+docker compose run --rm supervisor auto
+# Interactive in the terminal (asks you when the agent is stuck):
 docker compose run --rm supervisor run todo-rs
 docker compose run --rm supervisor status todo-rs
 ```
 
-Settings (model, context limits, restart limits) are in `supervisor.toml`; edit
-it and restart, no rebuild needed.
+`auto` reads `PROJECT`, `REVIEW_PLAN` (1 = stop after planning) and
+`ON_ESCALATE` (`stop` or `skip`) from `.env`.
 
 How it works: the supervisor container gets the host's Docker socket, so the
 agent sandboxes it starts are normal sibling containers on the host (visible in
