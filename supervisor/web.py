@@ -25,6 +25,7 @@ from .log import RunLog
 
 STATIC_DIR = Path(__file__).parent / "static"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+FILE_VIEW_LIMIT = 512 * 1024
 
 
 class ApiError(Exception):
@@ -205,8 +206,54 @@ class App:
     def project(self, name: str) -> dict:
         path = self._require_contract(name)
         contract = Contract.load(path)
-        log = RunLog(path, echo=False).read_all()[-400:]
-        return {"name": name, "contract": _contract_dict(contract), "log": log, "running": self._active_job_for(name)}
+        run_log = RunLog(path, echo=False)
+        return {
+            "name": name,
+            "contract": _contract_dict(contract),
+            "log": run_log.read_all()[-400:],
+            "chat": run_log.read_chat(600),
+            "running": self._active_job_for(name),
+        }
+
+    def files(self, name: str) -> dict:
+        """Project files (build output and our state excluded), plus when the
+        supervisor last saw each one change, from the turn records."""
+        from .progress import _iter_files
+
+        root = self._require_contract(name)
+        files = []
+        for p in _iter_files(root):
+            try:
+                st = p.stat()
+            except OSError:
+                continue
+            files.append({"path": p.relative_to(root).as_posix(), "size": st.st_size, "mtime": st.st_mtime})
+            if len(files) >= 3000:
+                break
+        files.sort(key=lambda f: f["path"])
+        touched: dict[str, str] = {}
+        for rec in RunLog(root, echo=False).read_all():
+            if rec.get("kind") == "turn":
+                for changed in rec.get("changed") or []:
+                    touched[changed] = rec.get("ts", "")
+        return {"files": files, "touched": touched}
+
+    def file(self, name: str, rel: str) -> dict:
+        root = self._require_contract(name).resolve()
+        target = (root / rel).resolve()
+        if root not in target.parents or not target.is_file():
+            raise ApiError(HTTPStatus.NOT_FOUND, "no such file")
+        size = target.stat().st_size
+        data = target.read_bytes()[:FILE_VIEW_LIMIT]
+        if b"\x00" in data[:8000]:
+            return {"path": rel, "size": size, "binary": True, "text": ""}
+        return {
+            "path": rel,
+            "size": size,
+            "binary": False,
+            "truncated": size > FILE_VIEW_LIMIT,
+            "text": data.decode("utf-8", errors="replace"),
+        }
 
     def create(self, name: str, goal: str) -> dict:
         from .planner import plan
@@ -346,6 +393,11 @@ def make_handler(app: App, token: str | None):
                         return self._json(HTTPStatus.OK, app.save(route[1], self._body().get("contract") or {}))
                 if method == "POST" and len(route) == 3 and route[0] == "projects" and route[2] == "run":
                     return self._json(HTTPStatus.OK, app.start(route[1]))
+                if method == "GET" and len(route) == 3 and route[0] == "projects" and route[2] == "files":
+                    return self._json(HTTPStatus.OK, app.files(route[1]))
+                if method == "GET" and len(route) == 3 and route[0] == "projects" and route[2] == "file":
+                    rel = (parse_qs(url.query).get("path") or [""])[0]
+                    return self._json(HTTPStatus.OK, app.file(route[1], rel))
                 if method == "POST" and route == ["stop"]:
                     return self._json(HTTPStatus.OK, app.stop())
                 if method == "POST" and route == ["answer"]:

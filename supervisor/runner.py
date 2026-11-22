@@ -14,6 +14,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from . import progress
+from .chat import chat_record
 from .collector import TurnCollector
 from .config import Settings
 from .contract import DONE, SKIPPED, Contract, Milestone
@@ -43,30 +44,6 @@ ESCALATE_MODES = ("ask", "stop", "skip")
 EscalationHandler = Callable[[Milestone, Decision, CheckResult], tuple[str, str]]
 
 
-def describe_action(event) -> str:
-    """One short line for a live activity feed."""
-    kind = type(event).__name__
-    if kind == "ActionEvent":
-        tool = getattr(event, "tool_name", "?")
-        action = getattr(event, "action", None)
-        detail = ""
-        for attr in ("command", "path", "message"):
-            value = getattr(action, attr, None)
-            if value:
-                detail = str(value)
-                break
-        if tool == "file_editor" and getattr(action, "path", None):
-            detail = f"{getattr(action, 'command', '')} {action.path}".strip()
-        return f"{tool}: {detail}"[:300]
-    if kind == "MessageEvent" and getattr(event, "source", "") == "agent":
-        content = getattr(getattr(event, "llm_message", None), "content", None) or []
-        text = "".join(getattr(c, "text", "") or "" for c in content).strip()
-        return f"says: {text}"[:600] if text else ""
-    if kind == "AgentErrorEvent":
-        return f"error: {getattr(event, 'error', '')}"[:300]
-    return ""
-
-
 class Supervisor:
     def __init__(
         self,
@@ -86,6 +63,7 @@ class Supervisor:
         self.on_escalate = on_escalate
         self._stop = threading.Event()
         self._conversation = None
+        self._milestone_n = 0  # tags chat records with the milestone they belong to
 
     def request_stop(self) -> None:
         """Ask the run to stop (thread-safe). Pauses the agent mid-turn if one is
@@ -103,9 +81,9 @@ class Supervisor:
             raise Quit()
 
     def _activity(self, kind: str, event) -> None:
-        line = describe_action(event)
-        if line:
-            self.log.publish("agent", text=line)
+        record = chat_record(event)
+        if record:
+            self.log.chat(record, milestone=self._milestone_n)
 
     # --- sandbox helpers ------------------------------------------------
 
@@ -191,8 +169,18 @@ class Supervisor:
         handoff = ""
         self.log.say(f"=== Milestone {n}/{total}: {milestone.title}  (check: {milestone.check})")
         self.log.event("milestone_start", n=n, title=milestone.title)
+        self._milestone_n = n
 
         while True:  # one iteration per conversation
+            self.log.chat(
+                {
+                    "role": "system",
+                    "level": "divider",
+                    "text": f"Milestone {n}/{total}: {milestone.title}"
+                    + (f" (fresh conversation, restart {state.restarts})" if state.restarts else ""),
+                },
+                milestone=n,
+            )
             collector = TurnCollector(on_activity=self._activity)
             conversation = Conversation(
                 agent=agent,
@@ -222,6 +210,19 @@ class Supervisor:
                     report = collector.report(status, exception, changed_files=len(changed))
                     check = self._exec(workspace, milestone.check, self.settings.check_timeout)
                     decision = decide(report, check, milestone.check, state, limits)
+                    self.log.chat(
+                        {
+                            "role": "check",
+                            "command": milestone.check,
+                            "passed": check.passed,
+                            "exit_code": check.exit_code,
+                            "text": check.output[-4000:],
+                            "decision": decision.action.value,
+                            "reason": decision.reason,
+                            "changed": changed[:50],
+                        },
+                        milestone=n,
+                    )
 
                     self.log.event(
                         "turn",
@@ -232,6 +233,7 @@ class Supervisor:
                         changed=changed[:50],
                         check_passed=check.passed,
                         check_exit=check.exit_code,
+                        check_output=check.output[-3000:],
                         decision=decision.action.value,
                         reason=decision.reason,
                         agent_text=report.agent_text[:2000],

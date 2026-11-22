@@ -61,7 +61,7 @@
   label { display: block; font-size: 12px; color: var(--dim); margin: 10px 0 4px; }
   label:first-child { margin-top: 0; }
 
-  .project { display: grid; grid-template-columns: minmax(380px, 1fr) minmax(380px, 1fr); gap: 0; height: 100%; }
+  .project { display: grid; grid-template-columns: minmax(340px, 2fr) minmax(420px, 3fr); gap: 0; height: 100%; }
   .project > .scroll:first-child { border-right: 1px solid var(--border); }
   .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
   .toolbar h2 { margin: 0 8px 0 0; font-size: 18px; }
@@ -87,7 +87,7 @@
   .feedhead h3 { margin: 0; font-size: 14px; }
   .feedhead label { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 12px; }
   .feedhead input { width: auto; }
-  #feed { flex: 1; overflow-y: auto; padding: 12px 24px; font-size: 13px; }
+  #feed { padding: 12px 24px; font-size: 13px; }
   .ev { padding: 3px 0; border-bottom: 1px dashed #20242d; white-space: pre-wrap; word-break: break-word; }
   .ev .t { color: var(--dim); font-family: var(--mono); font-size: 11px; margin-right: 8px; }
   .ev.say .who { color: var(--purple); font-weight: 600; margin-right: 6px; }
@@ -97,6 +97,55 @@
   .badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); margin-right: 4px; }
   .badge.ok { color: var(--ok); border-color: #1f5c43; } .badge.bad { color: var(--bad); border-color: #5a2b2b; }
   .badge.act { color: var(--accent); border-color: #2c3a66; }
+  /* right panel tabs */
+  .tabs { display: flex; gap: 2px; }
+  .tab { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0;
+    padding: 6px 10px; color: var(--dim); font-weight: 600; }
+  .tab:hover:not(:disabled) { color: var(--text); border-color: transparent; }
+  .tab.on { color: var(--text); border-bottom-color: var(--accent); }
+  .tab .count { font-size: 11px; background: var(--accent2); color: #fff; border-radius: 999px; padding: 0 6px; margin-left: 4px; }
+  .pane { flex: 1; overflow-y: auto; min-height: 0; }
+
+  /* chat */
+  #chat { padding: 12px 20px 40px; }
+  .msg { margin: 8px 0; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
+  .msg > .who { font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; padding: 6px 10px 0; display: flex; gap: 8px; }
+  .msg > .who .t { color: var(--dim); font-weight: 400; text-transform: none; font-family: var(--mono); }
+  .msg > .body { padding: 4px 10px 8px; white-space: pre-wrap; word-break: break-word; }
+  .msg.supervisor { border-color: #4a3566; } .msg.supervisor > .who { color: var(--purple); }
+  .msg.agent { border-color: #2c3a66; } .msg.agent > .who { color: var(--accent); }
+  .msg.system { background: none; border-style: dashed; color: var(--dim); font-size: 12.5px; }
+  .msg.system.error { color: var(--bad); border-color: #5a2b2b; }
+  .msg.tool { background: var(--bg); }
+  .msg.tool > .who { color: var(--dim); }
+  .msg.tool .summary { font-family: var(--mono); font-size: 12.5px; padding: 4px 10px 6px; color: var(--text); word-break: break-all; }
+  .msg.check.ok { border-color: #1f5c43; } .msg.check.bad { border-color: #5a2b2b; }
+  .msg.check > .who { color: var(--text); }
+  .chatdiv { margin: 18px 0 6px; font-weight: 650; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+  details { padding: 0 10px 6px; }
+  details > summary { cursor: pointer; color: var(--dim); font-size: 12px; user-select: none; }
+  details pre { max-height: 360px; }
+  .clamp { max-height: 14em; overflow: hidden; position: relative; }
+  .clamp::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3em; background: linear-gradient(transparent, var(--panel)); }
+  .more { font-size: 12px; color: var(--accent); cursor: pointer; padding: 0 10px 8px; }
+  .filechip { font-family: var(--mono); font-size: 11.5px; border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; margin: 2px 4px 2px 0; display: inline-block; cursor: pointer; color: var(--accent); }
+  .filechip:hover { border-color: var(--accent); }
+
+  /* files */
+  .files { display: grid; grid-template-columns: minmax(180px, 32%) 1fr; height: 100%; min-height: 0; }
+  .filelist { border-right: 1px solid var(--border); overflow-y: auto; padding: 8px 0; font-family: var(--mono); font-size: 12.5px; }
+  .filelist .f { padding: 2px 10px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 6px; align-items: center; }
+  .filelist .f:hover { background: var(--panel2); }
+  .filelist .f.on { background: #22304f; }
+  .filelist .d { color: var(--dim); padding: 6px 10px 2px; white-space: nowrap; }
+  .filelist .new { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: none; }
+  .filelist .new.old { background: var(--border); }
+  .viewer { overflow: auto; min-width: 0; }
+  .viewer .vh { position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--border); padding: 8px 12px; font-family: var(--mono); font-size: 12.5px; display: flex; gap: 10px; }
+  .code { margin: 0; border: none; border-radius: 0; max-height: none; padding: 8px 0; counter-reset: ln; font-family: var(--mono); font-size: 12.5px; background: none; }
+  .code span.l { display: block; padding: 0 12px 0 0; white-space: pre; }
+  .code span.l::before { counter-increment: ln; content: counter(ln); display: inline-block; width: 3.2em; padding-right: 1em; text-align: right; color: #4b5263; user-select: none; }
+
   .toast { position: fixed; bottom: 16px; right: 16px; background: #3a1d1d; border: 1px solid #5a2b2b; color: #ffd6d6;
     padding: 10px 14px; border-radius: 8px; max-width: 420px; z-index: 10; }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
@@ -191,12 +240,24 @@
     </div>
     <div class="feedwrap">
       <div class="feedhead">
-        <h3>Activity</h3>
+        <div class="tabs">
+          <button class="tab" data-tab="chat">Chat<span class="count hidden" id="n-chat"></span></button>
+          <button class="tab" data-tab="activity">Activity</button>
+          <button class="tab" data-tab="files">Files<span class="count hidden" id="n-files"></span></button>
+        </div>
         <span class="grow"></span>
-        <label><input type="checkbox" id="f-agent" checked> agent steps</label>
-        <label><input type="checkbox" id="f-follow" checked> follow</label>
+        <label id="opt-thinking"><input type="checkbox" id="f-thinking"> thinking</label>
+        <label id="opt-follow"><input type="checkbox" id="f-follow" checked> follow</label>
+        <label id="opt-changed" class="hidden"><input type="checkbox" id="f-changed"> changed only</label>
       </div>
-      <div id="feed"></div>
+      <div class="pane" id="pane-chat"><div id="chat"></div></div>
+      <div class="pane hidden" id="pane-activity"><div id="feed"></div></div>
+      <div class="pane hidden" id="pane-files" style="overflow:hidden">
+        <div class="files">
+          <div class="filelist" id="filelist"></div>
+          <div class="viewer" id="viewer"><div class="welcome" style="margin:40px 20px">Select a file.</div></div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -225,6 +286,13 @@ const S = {
   dirty: false,
   lastEvent: 0,
   feedCount: 0,
+  chatCount: 0,
+  calls: new Map(),  // tool-call id -> chat card, so results attach under their call
+  tab: "chat",
+  unreadChat: 0,
+  unreadFiles: 0,
+  files: null,       // /api/projects/<name>/files
+  openFile: null,    // {path, mtime}
 };
 
 // ---------- API ----------
@@ -330,12 +398,171 @@ async function openProject(name, skipConfirm = false) {
   $("#esc-retry").onclick = () => answer("guidance");
   $("#esc-skip").onclick = () => answer("skip");
   $("#esc-stop").onclick = () => answer("stop");
-  $("#f-agent").onchange = () => $("#feed").querySelectorAll(".ev.agent").forEach(n => n.classList.toggle("hidden", !$("#f-agent").checked));
+  $("#f-thinking").checked = localStorage.getItem("showThinking") === "1";
+  $("#f-thinking").onchange = () => {
+    localStorage.setItem("showThinking", $("#f-thinking").checked ? "1" : "0");
+    document.querySelectorAll("#chat .thinking").forEach(n => n.classList.toggle("hidden", !$("#f-thinking").checked));
+  };
+  $("#f-changed").onchange = renderFileList;
+  document.querySelectorAll(".tab").forEach(b => b.onclick = () => switchTab(b.dataset.tab));
   renderEditor(); renderProjectChrome(); renderSidebar();
   // history from disk, then live events continue appending
   $("#feed").replaceChildren(); S.feedCount = 0;
   for (const rec of S.project.log) addFeed(rec);
+  $("#chat").replaceChildren(); S.calls = new Map(); S.chatCount = 0;
+  for (const rec of S.project.chat) addChat(rec);
+  if (!S.project.chat.length) $("#chat").append(el("div", { class: "dim", style: "margin-top:20px", text: "The agent's conversation shows up here once a run starts." }));
+  S.files = null; S.openFile = null;
+  switchTab(localStorage.getItem("tab") || "chat");
   scrollFeed(true);
+}
+
+// ---------- tabs ----------
+function switchTab(name) {
+  S.tab = name; localStorage.setItem("tab", name);
+  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
+  for (const t of ["chat", "activity", "files"]) $(`#pane-${t}`).classList.toggle("hidden", t !== name);
+  $("#opt-thinking").classList.toggle("hidden", name !== "chat");
+  $("#opt-follow").classList.toggle("hidden", name === "files");
+  $("#opt-changed").classList.toggle("hidden", name !== "files");
+  if (name === "chat") { S.unreadChat = 0; badge("#n-chat", 0); }
+  if (name === "files") { S.unreadFiles = 0; badge("#n-files", 0); loadFiles(); }
+  scrollFeed(true);
+}
+function badge(sel, n) { const b = $(sel); if (!b) return; b.textContent = n > 99 ? "99+" : String(n); b.classList.toggle("hidden", !n); }
+
+// ---------- chat ----------
+function collapsible(text, cls = "body") {
+  const body = el("div", { class: cls, text });
+  const lines = text.split("\n").length;
+  if (lines <= 14 && text.length <= 1400) return [body];
+  body.classList.add("clamp");
+  const more = el("div", { class: "more", text: "show more" });
+  more.onclick = () => { const c = body.classList.toggle("clamp"); more.textContent = c ? "show more" : "show less"; };
+  return [body, more];
+}
+function thinkingBlock(text) {
+  if (!text) return null;
+  const d = el("details", { class: "thinking" + ($("#f-thinking").checked ? "" : " hidden") },
+    el("summary", { text: "thinking" }), el("pre", { text }));
+  return d;
+}
+function fileChip(path) {
+  return el("span", { class: "filechip", text: path, onclick: () => { switchTab("files"); openFile(path); } });
+}
+function callArgsBlock(r) {
+  const a = r.args || {};
+  // Show the useful part of the call: file contents for writes, edits as old/new.
+  if (a.file_text) return el("details", {}, el("summary", { text: `file content (${a.file_text.split("\n").length} lines)` }), el("pre", { class: "mono", text: a.file_text }));
+  if (a.old_str != null || a.new_str != null)
+    return el("details", {}, el("summary", { text: "edit" }),
+      el("pre", { class: "mono", style: "border-color:#5a2b2b", text: a.old_str || "" }),
+      el("pre", { class: "mono", style: "border-color:#1f5c43", text: a.new_str || "" }));
+  const rest = Object.fromEntries(Object.entries(a).filter(([k]) => !["command", "path"].includes(k)));
+  if (Object.keys(rest).length && r.tool !== "terminal")
+    return el("details", {}, el("summary", { text: "arguments" }), el("pre", { class: "mono", text: JSON.stringify(rest, null, 2) }));
+  return null;
+}
+function addChat(r) {
+  const chat = $("#chat"); if (!chat) return;
+  if (S.chatCount === 0) chat.replaceChildren();
+  const t = time(r.ts); let node = null;
+  switch (r.role) {
+    case "system":
+      if (r.level === "divider") node = el("div", { class: "chatdiv", text: r.text });
+      else node = el("div", { class: "msg system" + (r.level === "error" ? " error" : "") }, el("div", { class: "body", text: r.text }));
+      break;
+    case "supervisor":
+      node = el("div", { class: "msg supervisor" }, el("div", { class: "who" }, "Supervisor → agent", el("span", { class: "t", text: t })), ...collapsible(r.text));
+      break;
+    case "agent":
+      node = el("div", { class: "msg agent" }, el("div", { class: "who" }, "Agent", el("span", { class: "t", text: t })), thinkingBlock(r.thinking), ...collapsible(r.text));
+      break;
+    case "tool_call":
+      node = el("div", { class: "msg tool" },
+        el("div", { class: "who" }, r.tool, el("span", { class: "t", text: t })),
+        thinkingBlock(r.thinking),
+        el("div", { class: "summary", text: r.summary }),
+        callArgsBlock(r));
+      if (r.call_id) S.calls.set(r.call_id, node);
+      break;
+    case "tool_result": {
+      const text = r.text || "(no output)";
+      const lines = text.split("\n").length;
+      const out = el("details", {}, el("summary", { text: `output (${lines} line${lines === 1 ? "" : "s"})` }), el("pre", { class: "mono", text }));
+      if (lines <= 6 && text.length < 600) out.open = true;
+      const call = S.calls.get(r.action_id);
+      if (call) { call.append(out); S.calls.delete(r.action_id); scrollFeed(false); return; }
+      node = el("div", { class: "msg tool" }, el("div", { class: "who" }, `${r.tool} result`), out);
+      break;
+    }
+    case "check": {
+      const out = el("details", {}, el("summary", { text: "check output" }), el("pre", { class: "mono", text: r.text || "(no output)" }));
+      if (!r.passed) out.open = true;
+      node = el("div", { class: "msg check " + (r.passed ? "ok" : "bad") },
+        el("div", { class: "who" }, r.passed ? "✓ check passed" : `✗ check failed (exit ${r.exit_code})`, el("span", { class: "t", text: t })),
+        el("div", { class: "summary mono", style: "padding:2px 10px", text: r.command }),
+        el("div", { class: "body" }, el("span", { class: "badge act", text: (r.decision || "").toUpperCase() }), r.reason || ""),
+        (r.changed || []).length ? el("div", { class: "body" }, "files changed: ", ...r.changed.map(fileChip)) : null,
+        out);
+      break;
+    }
+  }
+  if (!node) return;
+  chat.append(node);
+  if (++S.chatCount > 1500) { chat.firstChild.remove(); S.chatCount--; }
+}
+
+// ---------- files ----------
+async function loadFiles() {
+  if (S.view !== "project" || S.tab !== "files") return;
+  const name = S.current;
+  try {
+    const data = await api("GET", `/api/projects/${encodeURIComponent(name)}/files`);
+    if (name !== S.current) return;
+    S.files = data; renderFileList();
+    if (S.openFile) {
+      const f = data.files.find(x => x.path === S.openFile.path);
+      if (f && f.mtime !== S.openFile.mtime) openFile(S.openFile.path, true);
+    }
+  } catch (e) { toast(e.message); }
+}
+function renderFileList() {
+  const box = $("#filelist"); if (!box || !S.files) return;
+  box.replaceChildren();
+  const touched = S.files.touched || {};
+  const newest = Object.values(touched).sort().pop() || "";
+  let files = S.files.files;
+  if ($("#f-changed").checked) files = files.filter(f => touched[f.path]);
+  if (!files.length) { box.append(el("div", { class: "d", text: S.files.files.length ? "No changed files." : "No files yet." })); return; }
+  let lastDir = null;
+  for (const f of files) {
+    const parts = f.path.split("/"); const dir = parts.slice(0, -1).join("/");
+    if (dir !== lastDir) { if (dir) box.append(el("div", { class: "d", text: dir + "/" })); lastDir = dir; }
+    const dot = touched[f.path] ? el("span", { class: "new" + (touched[f.path] === newest ? "" : " old"), title: `changed by the agent (${touched[f.path].replace("T", " ")})` }) : el("span", { style: "width:6px;flex:none" });
+    box.append(el("div", { class: "f" + (S.openFile && S.openFile.path === f.path ? " on" : ""), style: `padding-left:${dir ? 22 : 10}px`, title: f.path,
+      onclick: () => openFile(f.path) }, dot, parts[parts.length - 1]));
+  }
+}
+async function openFile(path, keepScroll) {
+  if (!S.files) { await loadFiles(); }
+  try {
+    const data = await api("GET", `/api/projects/${encodeURIComponent(S.current)}/file?path=${encodeURIComponent(path)}`);
+    const meta = (S.files && S.files.files.find(f => f.path === path)) || {};
+    S.openFile = { path, mtime: meta.mtime };
+    const viewer = $("#viewer"); const top = viewer.scrollTop;
+    const head = el("div", { class: "vh" }, el("span", { class: "grow", text: path }), el("span", { class: "dim", text: `${data.size.toLocaleString()} bytes` }));
+    let body;
+    if (data.binary) body = el("div", { class: "dim", style: "padding:20px", text: "Binary file." });
+    else {
+      body = el("pre", { class: "code" });
+      for (const line of data.text.split("\n")) body.append(el("span", { class: "l", text: line || " " }));
+      if (data.truncated) body.append(el("span", { class: "l dim", text: "... (file truncated in viewer)" }));
+    }
+    viewer.replaceChildren(head, body);
+    if (keepScroll) viewer.scrollTop = top;
+    renderFileList();
+  } catch (e) { toast(e.message); }
 }
 
 function confirmLeave() {
@@ -463,9 +690,6 @@ function addFeed(r) {
         node = el("div", { class: "ev divider", text: r.text.replace(/^=== /, "").replace(/\s+\(check: [\s\S]*\)$/, "") });
       else node = el("div", { class: "ev say" }, el("span", { class: "t", text: time(r.ts) }), el("span", { class: "who", text: "supervisor" }), r.text || "");
       break;
-    case "agent":
-      node = el("div", { class: "ev agent" + ($("#f-agent").checked ? "" : " hidden"), text: r.text });
-      break;
     case "turn": {
       const ok = r.check_passed;
       node = el("div", { class: "ev turn" }, el("span", { class: "t", text: time(r.ts) }),
@@ -473,6 +697,8 @@ function addFeed(r) {
         el("span", { class: "badge", text: `${r.actions} actions · ${(r.changed || []).length} files` }),
         el("span", { class: "badge " + (ok ? "ok" : "bad"), text: ok ? "check passed" : `check failed (${r.check_exit})` }),
         el("span", { class: "badge act", text: (r.decision || "").toUpperCase() }), r.reason || "");
+      if ((r.changed || []).length) node.append(el("div", { style: "margin-top:3px" }, ...r.changed.map(fileChip)));
+      if (r.check_output) node.append(el("details", { style: "padding:0" }, el("summary", { text: "check output" }), el("pre", { class: "mono", text: r.check_output })));
       break;
     }
     case "escalate":
@@ -491,7 +717,9 @@ function addFeed(r) {
   if (++S.feedCount > 2500) { feed.firstChild.remove(); S.feedCount--; }
 }
 function scrollFeed(force) {
-  const feed = $("#feed"); if (feed && (force || $("#f-follow").checked)) feed.scrollTop = feed.scrollHeight;
+  if (S.view !== "project" || S.tab === "files") return;
+  const pane = $(`#pane-${S.tab}`);
+  if (pane && (force || $("#f-follow").checked)) pane.scrollTop = pane.scrollHeight;
 }
 
 // ---------- live events ----------
@@ -505,20 +733,33 @@ function scheduleRefresh(reloadProject) {
     } catch (e) { /* transient */ }
   }, 250);
 }
+let filesTimer = null;
+function scheduleFiles() {
+  // The agent changed something: refresh the file list (or count it as unread).
+  if (S.tab !== "files") { badge("#n-files", S.unreadFiles = (S.unreadFiles || 0) + 1); return; }
+  clearTimeout(filesTimer); filesTimer = setTimeout(loadFiles, 1500);
+}
 async function pollEvents() {
   for (;;) {
     try {
       const { events, last } = await api("GET", `/api/events?after=${S.lastEvent}`);
       if (last < S.lastEvent) S.lastEvent = 0;  // server restarted
-      let refresh = false, reload = false;
+      let refresh = false, reload = false, files = false;
       for (const ev of events) {
         S.lastEvent = Math.max(S.lastEvent, ev.id);
-        if (S.view === "project" && ev.project === S.current) addFeed(ev);
+        if (S.view === "project" && ev.project === S.current) {
+          if (ev.kind === "chat") {
+            addChat(ev);
+            if (S.tab !== "chat") badge("#n-chat", ++S.unreadChat);
+            if (ev.role === "tool_result" || ev.role === "check") files = true;
+          } else addFeed(ev);
+        }
         if (["job", "planning", "contract", "turn", "milestone_start", "skip", "guidance"].includes(ev.kind)) refresh = true;
         if (["job", "contract", "turn", "skip", "guidance"].includes(ev.kind) && ev.project === S.current) reload = true;
       }
       if (events.length) scrollFeed(false);
       if (refresh) scheduleRefresh(reload);
+      if (files) scheduleFiles();
     } catch (e) {
       await new Promise(r => setTimeout(r, 3000));
     }

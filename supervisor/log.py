@@ -19,6 +19,7 @@ Listener = Callable[[dict], None]
 class RunLog:
     def __init__(self, project_dir: Path, echo: bool = True):
         self.path = Path(project_dir) / STATE_DIR / "log.jsonl"
+        self.chat_path = Path(project_dir) / STATE_DIR / "chat.jsonl"
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.echo = echo
         self._listeners: list[Listener] = []
@@ -48,13 +49,35 @@ class RunLog:
             print(f"\n\033[1;35m[supervisor]\033[0m {text}", file=sys.stderr, flush=True)
         self.event("say", text=text, **data)
 
-    def read_all(self) -> list[dict]:
-        if not self.path.exists():
-            return []
-        records = []
-        for line in self.path.read_text(encoding="utf-8").splitlines():
+    def chat(self, record: dict, **extra) -> None:
+        """One message of the agent conversation (see chat.py). Saved to
+        chat.jsonl so the conversation survives reloads, and published live."""
+        full = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), **record, **extra}
+        with self._lock, self.chat_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(full, default=str) + "\n")
+        for listener in list(self._listeners):
             try:
-                records.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue
-        return records
+                listener({"kind": "chat", **full})
+            except Exception:
+                pass
+
+    def read_all(self) -> list[dict]:
+        return _read_jsonl(self.path)
+
+    def read_chat(self, limit: int = 600) -> list[dict]:
+        return _read_jsonl(self.chat_path, limit)
+
+
+def _read_jsonl(path: Path, limit: int | None = None) -> list[dict]:
+    if not path.exists():
+        return []
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if limit is not None:
+        lines = lines[-limit:]
+    records = []
+    for line in lines:
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return records
