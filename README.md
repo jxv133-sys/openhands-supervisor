@@ -23,17 +23,51 @@ full of `apt` output is where they get lost.
 model's opinion. Progress is measured by hashing the project files on disk, so
 it works however the agent writes files.
 
-## Requirements
+## Quick start (Docker Compose)
 
-On the machine that runs OpenHands (Linux):
+Needs a Linux machine with Docker, and an Ollama server reachable from it
+(the default `supervisor.toml` points at `http://192.168.50.95:11434`).
 
-- Python 3.12+
-- Docker (the agent runs inside the `ghcr.io/openhands/agent-server` sandbox,
-  not on your host)
-- An Ollama server reachable from that machine *and from inside Docker
-  containers* (the default config points at `http://192.168.50.95:11434`)
+```bash
+git clone <this repo> && cd openhands-supervisor
+cp .env.example .env        # put your GOAL (and a PROJECT name) in it
+docker compose up --build
+```
 
-## Install
+On first start it plans milestones for your goal, then works through them.
+The code ends up in `./projects/<PROJECT>`. Ctrl+C any time; `docker compose up`
+resumes from the next unfinished milestone.
+
+`.env` options (see `.env.example`):
+
+| Variable | Meaning |
+|---|---|
+| `PROJECT` | folder name under `./projects`; use a new one per project |
+| `GOAL` | what to build, in plain language (only used when planning a new project) |
+| `REVIEW_PLAN` | `1` = stop after planning so you can edit `projects/<PROJECT>/.supervisor/contract.json`, then `up` again |
+| `ON_ESCALATE` | when the agent can't finish a milestone even after restarts: `stop` (default) or `skip` |
+
+When it stops for help, it prints why. Add a hint to that milestone's `notes`
+in the contract and `up` again, or run it interactively so it asks you in the
+terminal:
+
+```bash
+docker compose run --rm supervisor run todo-rs
+docker compose run --rm supervisor status todo-rs
+```
+
+Settings (model, context limits, restart limits) are in `supervisor.toml`; edit
+it and restart, no rebuild needed.
+
+How it works: the supervisor container gets the host's Docker socket, so the
+agent sandboxes it starts are normal sibling containers on the host (visible in
+`docker ps`). It finds the host path of `./projects` itself, so the sandbox
+mounts the right folder. Access to the Docker socket is effectively root access
+to the host; only run images you built.
+
+## Install without Docker
+
+Needs Python 3.12+ and Docker (for the agent sandbox).
 
 ```bash
 cd openhands-supervisor

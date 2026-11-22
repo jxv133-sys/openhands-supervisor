@@ -1,0 +1,31 @@
+# Quick start:
+#   cp .env.example .env      # put your GOAL in it
+#   docker compose up --build
+#
+# Code ends up in ./projects/<PROJECT>. Stop any time with Ctrl+C;
+# `docker compose up` again resumes from the next unfinished milestone.
+#
+# Interactive mode (it asks you when the agent is stuck, instead of stopping):
+#   docker compose run --rm supervisor run <project>
+
+services:
+  supervisor:
+    build: .
+    image: openhands-supervisor:latest
+    # Host networking: the supervisor reaches the agent sandbox it starts on
+    # localhost:<port>, and Ollama on your LAN. (Linux only.)
+    network_mode: host
+    stdin_open: true
+    tty: true
+    environment:
+      PROJECT: ${PROJECT:-project}
+      GOAL: ${GOAL:-}
+      REVIEW_PLAN: ${REVIEW_PLAN:-0}
+      ON_ESCALATE: ${ON_ESCALATE:-stop}
+      SUPERVISOR_CONFIG: /config/supervisor.toml
+    volumes:
+      # Lets the supervisor start OpenHands agent-server sandbox containers
+      # (siblings on the host; visible in `docker ps` while running).
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./projects:/projects
+      - ./supervisor.toml:/config/supervisor.toml:ro
