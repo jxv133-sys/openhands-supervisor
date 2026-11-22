@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import signal
 import sys
 from pathlib import Path
@@ -66,14 +67,24 @@ def _truthy(value: str | None) -> bool:
     return (value or "").strip().lower() in ("1", "true", "yes", "on")
 
 
+def read_goal(path: Path) -> str:
+    """The whole goal file is the goal, minus <!-- comments -->."""
+    if not path.is_file():
+        return ""
+    text = path.read_text(encoding="utf-8")
+    return re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL).strip()
+
+
 def cmd_auto(args, settings: Settings) -> int:
-    """Unattended mode for `docker compose up`: everything comes from env vars.
-    Plans on first start (unless a plan exists), then runs it."""
+    """Unattended mode for `docker compose up`. The goal comes from goal.md
+    ($GOAL_FILE), everything else from env vars. Plans on first start (unless
+    a plan exists), then runs it."""
     from .planner import plan
     from .runner import ESCALATE_MODES, Supervisor
 
     project = Path(os.environ.get("PROJECT", "").strip() or "project")
-    goal = os.environ.get("GOAL", "").strip()
+    goal_file = Path(os.environ.get("GOAL_FILE", "").strip() or "goal.md")
+    goal = read_goal(goal_file)
     on_escalate = os.environ.get("ON_ESCALATE", "").strip().lower() or "stop"
     if on_escalate not in ESCALATE_MODES:
         print(f"ON_ESCALATE must be one of {', '.join(ESCALATE_MODES)}, not {on_escalate!r}")
@@ -86,15 +97,14 @@ def cmd_auto(args, settings: Settings) -> int:
         contract = Contract.load(project)
         if goal and goal != contract.goal:
             print(
-                f"Note: project '{project}' already has a plan for a different goal; continuing that plan.\n"
-                f"To start the new goal, set a different PROJECT, or delete {contract_path}.\n"
+                f"Note: goal.md changed, but project '{project}' already has a plan; continuing that plan.\n"
+                f"To start the new goal, set a different PROJECT in .env, or delete {contract_path}.\n"
             )
     else:
         if not goal:
             print(
-                "Nothing to do: no GOAL set and no existing plan.\n"
-                "Put your goal in .env (see .env.example), for example:\n"
-                '  PROJECT=todo-rs\n  GOAL="A Rust CLI todo app with add, list, done and remove commands"\n'
+                f"Nothing to do: {goal_file.name} is missing or empty, and project '{project}' has no plan yet.\n"
+                "Write what you want built in goal.md (next to docker-compose.yml), "
                 "then run `docker compose up --build` again."
             )
             return 1
@@ -147,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     r.set_defaults(func=cmd_run)
 
-    a = sub.add_parser("auto", help="unattended: plan if needed, then run (settings from env: PROJECT, GOAL, REVIEW_PLAN, ON_ESCALATE)")
+    a = sub.add_parser("auto", help="unattended: plan from goal.md if needed, then run (env: PROJECT, GOAL_FILE, REVIEW_PLAN, ON_ESCALATE)")
     a.set_defaults(func=cmd_auto)
 
     s = sub.add_parser("status", help="show milestone progress")
