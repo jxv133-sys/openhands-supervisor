@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from . import progress
+from . import progress, review
 from .chat import chat_record
 from .collector import TurnCollector
 from .config import Settings
@@ -128,8 +128,7 @@ class Supervisor:
         )
         agent = get_default_agent(llm=llm, cli_mode=True)
 
-        pending = self.contract.pending()
-        if not pending:
+        if not self.contract.pending() and not s.final_review:
             self.log.say("All milestones are already done.")
             return True
 
@@ -143,11 +142,20 @@ class Supervisor:
             try:
                 self._check_stop()
                 self._setup(workspace)
-                for milestone in pending:
-                    if milestone.status != "pending":  # e.g. skipped from the UI meanwhile
-                        continue
+                round_n = 0
+                while True:
+                    for milestone in self.contract.pending():
+                        if milestone.status != "pending":  # e.g. skipped meanwhile
+                            continue
+                        self._check_stop()
+                        self._run_milestone(workspace, agent, milestone)
+                    if not s.final_review:
+                        break
                     self._check_stop()
-                    self._run_milestone(workspace, agent, milestone)
+                    round_n += 1
+                    # The last round only reports, so the review always ends.
+                    if not self._final_review(workspace, round_n, may_add=round_n <= s.review_rounds):
+                        break
             except Quit:
                 self.log.say("Stopped. Progress is saved; run again to resume.")
                 return False
@@ -158,7 +166,105 @@ class Supervisor:
         done = len(self.contract.completed())
         total = len(self.contract.milestones)
         self.log.say(f"Finished: {done}/{total} milestones done.")
+        report = review.load_report(self.project_dir) if s.final_review else None
+        if report is not None and report.get("verdict") not in ("pass", "error"):
+            return False  # the final review found something still missing
         return done == total
+
+    # --- final review -----------------------------------------------------
+
+    def _final_review(self, workspace, round_n: int, may_add: bool) -> bool:
+        """Check the finished project as a whole (see review.py). Returns True
+        if it found work for the agent (milestones re-opened or added)."""
+        s = self.settings
+        report = review.new_report(round_n)
+        self._milestone_n = 0
+        self.log.say(f"=== Final review (round {round_n}): re-running every check, then testing the goal's requirements")
+        self.log.chat({"role": "system", "level": "divider", "text": f"Final review, round {round_n}"})
+
+        # 1. Regressions: a later milestone may have broken an earlier one.
+        for i, m in enumerate(self.contract.milestones, 1):
+            if m.status != "done":
+                continue
+            self._check_stop()
+            res = self._exec(workspace, m.check, s.check_timeout)
+            self.log.chat({"role": "check", "command": m.check, "passed": res.passed, "exit_code": res.exit_code,
+                           "text": res.output[-4000:], "decision": "regression check",
+                           "reason": f"milestone {i}: {m.title}", "changed": []})
+            if not res.passed:
+                report["regressions"].append({"milestone": i, "title": m.title, "output": res.output[-2000:]})
+                if may_add:
+                    m.status = "pending"
+                    m.restarts = 0
+                    m.notes.append(review.regression_note(res.output))
+
+        if report["regressions"]:
+            report["verdict"] = "regressions"
+            self._finish_review(report, may_add)
+            return may_add  # fix those first; requirements get reviewed next round
+
+        # 2. Acceptance: one end-to-end command per requirement of the goal.
+        try:
+            tree, sources = review.gather_sources(self.project_dir, int(s.max_input_tokens * 3 * 0.6))
+            requirements = review.ask_reviewer(
+                review.review_prompt(self.contract, tree, sources), s.ollama_url, s.model, s.llm_timeout
+            )
+        except Exception as exc:  # model down, bad JSON...: report it, don't fail the run
+            report["error"] = f"{type(exc).__name__}: {exc}"[:500]
+            report["verdict"] = "error"
+            self._finish_review(report, may_add)
+            return False
+
+        known_checks = {m.check for m in self.contract.milestones}
+        for req in requirements:
+            self._check_stop()
+            entry = {"requirement": req["requirement"], "check": req["check"], "passed": None, "output": ""}
+            if req["check"]:
+                res = self._exec(workspace, req["check"], s.check_timeout)
+                entry["passed"], entry["output"] = res.passed, res.output[-2000:]
+                self.log.chat({"role": "check", "command": req["check"], "passed": res.passed, "exit_code": res.exit_code,
+                               "text": res.output[-4000:], "decision": "requirement",
+                               "reason": req["requirement"], "changed": []})
+                # Same check already tried as a milestone (e.g. you skipped it): don't add it again.
+                if not res.passed and may_add and req["check"] not in known_checks:
+                    milestone = review.fix_milestone(req["requirement"], req["check"], res.output)
+                    self.contract.milestones.append(milestone)
+                    known_checks.add(req["check"])
+                    report["added"].append(milestone.title)
+            report["requirements"].append(entry)
+
+        failed = [r for r in report["requirements"] if r["passed"] is False]
+        report["verdict"] = "fail" if failed else "pass"
+        self._finish_review(report, may_add)
+        return bool(report["added"])
+
+    def _finish_review(self, report: dict, may_add: bool) -> None:
+        self.contract.save(self.project_dir)
+        review.save_report(self.project_dir, report)
+        reqs = report["requirements"]
+        passed = sum(r["passed"] is True for r in reqs)
+        failed = sum(r["passed"] is False for r in reqs)
+        unchecked = sum(r["passed"] is None for r in reqs)
+        if report["verdict"] == "error":
+            text = f"Final review could not run: {report['error']}"
+        elif report["verdict"] == "regressions":
+            names = ", ".join(f"{r['milestone']}. {r['title']}" for r in report["regressions"])
+            text = f"Final review: {len(report['regressions'])} finished milestone(s) are broken again: {names}."
+            text += " Re-opened them." if may_add else " (Review rounds used up; left as they are.)"
+        else:
+            text = f"Final review: {passed}/{len(reqs)} requirements of the goal pass"
+            text += f", {unchecked} not checkable by a command." if unchecked else "."
+            if report["added"]:
+                text += f" Added {len(report['added'])} milestone(s) for the failing ones."
+            elif failed:
+                text += f" {failed} still fail{'s' if failed == 1 else ''}" + (
+                    " (review rounds used up)." if not may_add else " (already tried as milestones).")
+        self.log.say(text)
+        self.log.chat({"role": "system", "level": "error" if report["verdict"] in ("fail", "error", "regressions") else "info",
+                       "text": text})
+        self.log.event("review", round=report["round"], verdict=report["verdict"], passed=passed, failed=failed,
+                       unchecked=unchecked, regressions=len(report["regressions"]), added=report["added"],
+                       error=report["error"])
 
     def _run_milestone(self, workspace, agent, milestone: Milestone) -> None:
         from openhands.sdk import Conversation

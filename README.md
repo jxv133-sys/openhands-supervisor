@@ -15,6 +15,23 @@ The supervisor does what you were doing by hand:
 | burns a whole turn without changing any file | restarts the milestone |
 | still can't do it after 3 restarts | asks you for guidance (type a hint, skip, or quit) |
 
+When the last milestone is done, a **final review** checks the project as a
+whole, again with real commands:
+
+1. Every finished milestone's check runs again. One that a later milestone broke
+   goes back to *pending* (with the failure as a note) and the agent fixes it.
+2. Your model lists each requirement in the goal and writes one end-to-end test
+   command for it (build the program, run it, check the output). The supervisor
+   runs them. Each failing requirement becomes a new milestone, with that
+   command as its check, and the agent works on it like any other.
+3. This repeats up to `review_rounds` times (default 2); the round after that only
+   reports. The result shows in the web UI's *Final review* card, in
+   `supervisor status`, and in `.supervisor/review.json`. Requirements no command
+   can test (e.g. "messages are clear") are listed for you to check yourself.
+
+On a finished project, *Run* becomes *Run final review*. Turn it off with
+`final_review = false` in `supervisor.toml`.
+
 Work is split into **milestones**, each run in a fresh conversation with a small
 scope. That's where local models do their best work: a 30K-token conversation
 full of `apt` output is where they get lost.

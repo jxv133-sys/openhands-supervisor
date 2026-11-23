@@ -28,6 +28,7 @@ class Milestone:
     status: str = PENDING
     restarts: int = 0
     notes: list[str] = field(default_factory=list)  # user guidance added on escalation
+    source: str = ""  # "" = planned; "review" = added by the final review
 
 
 @dataclass
@@ -86,6 +87,7 @@ class Contract:
                     status=m.get("status", PENDING),
                     restarts=int(m.get("restarts", 0)),
                     notes=[str(n) for n in m.get("notes", [])],
+                    source=str(m.get("source", "") or ""),
                 )
             )
         setup = [str(s).strip() for s in data.get("setup", []) if str(s).strip()]

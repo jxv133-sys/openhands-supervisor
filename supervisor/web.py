@@ -24,6 +24,7 @@ from urllib.parse import parse_qs, urlparse
 from .config import Settings
 from .contract import DONE, PENDING, SKIPPED, Contract
 from .log import RunLog
+from .review import load_report
 
 STATIC_DIR = Path(__file__).parent / "static"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -117,7 +118,7 @@ class Job:
             if self._stop_requested or (not ok and supervisor._stop.is_set()):
                 self._set("stopped", "Stopped. Progress is saved; press Run to resume.")
             elif ok:
-                self._set("finished", "All milestones done.")
+                self._set("finished", "All milestones done." + _review_summary(path))
             else:
                 c = supervisor.contract if hasattr(supervisor, "contract") else contract
                 skipped = sum(m.status == SKIPPED for m in c.milestones)
@@ -127,7 +128,7 @@ class Job:
                     parts.append(f"{skipped} skipped")
                 if pending:
                     parts.append(f"{pending} still pending")
-                self._set("finished" if not pending else "stopped", "Run ended: " + ", ".join(parts) + ".")
+                self._set("finished" if not pending else "stopped", "Run ended: " + ", ".join(parts) + "." + _review_summary(path))
         except Exception as exc:
             traceback.print_exc()
             self._set("failed", f"{type(exc).__name__}: {exc}")
@@ -260,6 +261,8 @@ class App:
             "contract": _contract_dict(contract),
             "log": run_log.read_all()[-400:],
             "chat": run_log.read_chat(600),
+            "review": load_report(path),
+            "final_review": self.settings.final_review,
             "running": self._active_job_for(name),
         }
 
@@ -361,7 +364,8 @@ class App:
         with self._lock:
             if self.job is not None and self.job.to_dict()["active"]:
                 raise ApiError(HTTPStatus.CONFLICT, f"'{self.job.project}' is already running; stop it first")
-            if not Contract.load(self.project_path(name)).pending():
+            # With nothing pending, Run does just the final review.
+            if not Contract.load(self.project_path(name)).pending() and not self.settings.final_review:
                 raise ApiError(HTTPStatus.CONFLICT, "nothing to do: no pending milestones")
             self.job = Job(self, name)
             self.job.thread.start()
@@ -378,6 +382,19 @@ class App:
             raise ApiError(HTTPStatus.CONFLICT, "nothing is running")
         self.job.answer(action, text)
         return self.job.to_dict()
+
+
+def _review_summary(path: Path) -> str:
+    report = load_report(path)
+    if not report:
+        return ""
+    if report.get("verdict") == "error":
+        return " The final review could not run (see the review card)."
+    if report.get("verdict") == "regressions":
+        return f" Final review: {len(report.get('regressions') or [])} milestone(s) broken again."
+    reqs = report.get("requirements") or []
+    passed = sum(r.get("passed") is True for r in reqs)
+    return f" Final review: {passed}/{len(reqs)} requirements pass."
 
 
 def _now() -> str:

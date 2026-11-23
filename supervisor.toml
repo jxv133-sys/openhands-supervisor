@@ -15,6 +15,12 @@ server_image = "ghcr.io/openhands/agent-server:latest-python"
 iterations_per_turn = 40   # tool calls before the supervisor checks in
 setup_timeout = 1800
 check_timeout = 900
+# Final review, after the last milestone: re-run every milestone's check, then
+# have the model write one end-to-end test command per requirement in the goal
+# and run them. Failures become new milestones. review_rounds caps how many
+# times that repeats; 0 = review and report only, add no milestones.
+final_review = true
+review_rounds = 2
 
 [limits]
 max_turns_per_conversation = 8

@@ -28,6 +28,8 @@ def _print_contract(contract: Contract) -> None:
         print(f"     check: {m.check}")
         if m.restarts:
             print(f"     restarts so far: {m.restarts}")
+        if m.source == "review":
+            print("     (added by the final review)")
         for note in m.notes:
             print(f"     note: {note}")
 
@@ -136,7 +138,19 @@ def cmd_web(args, settings: Settings) -> int:
 
 
 def cmd_status(args, settings: Settings) -> int:
+    from .review import load_report
+
     _print_contract(Contract.load(Path(args.project)))
+    report = load_report(Path(args.project))
+    if report:
+        print(f"\nFinal review (round {report.get('round')}, {report.get('ts', '').replace('T', ' ')}): {report.get('verdict')}")
+        if report.get("error"):
+            print(f"  could not run: {report['error']}")
+        for r in report.get("regressions") or []:
+            print(f"  BROKEN AGAIN  {r['milestone']}. {r['title']}")
+        for r in report.get("requirements") or []:
+            mark = {True: "PASS", False: "FAIL", None: "----"}[r.get("passed")]
+            print(f"  {mark}  {r['requirement']}")
     return 0
 
 

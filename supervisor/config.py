@@ -25,6 +25,10 @@ class Settings:
     iterations_per_turn: int = 40
     setup_timeout: int = 1800
     check_timeout: int = 900
+    # After the last milestone: re-run every check, then test each requirement
+    # of the goal end to end; failures become new milestones. Rounds of that.
+    final_review: bool = True
+    review_rounds: int = 2
     limits: Limits = field(default_factory=Limits)
 
     @property

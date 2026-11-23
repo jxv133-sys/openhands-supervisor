@@ -208,6 +208,16 @@
   .tip { position: absolute; pointer-events: none; z-index: 10; background: #0b0d11; border: 1px solid var(--border); border-radius: 6px;
     padding: 7px 9px; font-size: 12px; max-width: 320px; box-shadow: 0 6px 20px #000a; white-space: normal; }
   .tip b { font-weight: 650; } .tip .dim { font-size: 11.5px; }
+
+  /* final review */
+  .review h3 { margin: 0; font-size: 15px; }
+  .review.pass { border-color: #1f5c43; } .review.fail, .review.regressions { border-color: #5a2b2b; }
+  .rq { display: grid; grid-template-columns: 18px 1fr; gap: 2px 6px; padding: 5px 0; border-top: 1px solid #20242d; font-size: 13px; }
+  .rq:first-of-type { border-top: none; }
+  .rq .g { font-weight: 700; text-align: center; }
+  .rq details { grid-column: 2; padding: 0; }
+  .rq details pre { max-height: 200px; }
+  .ms .stag.review { color: var(--purple); border-color: #4a3566; }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
     border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -291,6 +301,7 @@
       </div>
       <div class="runline hidden" id="p-runline"></div>
       <div id="p-jobmsg" class="card hidden"></div>
+      <div id="p-review" class="card review hidden"></div>
       <div id="p-esc" class="card escalation hidden">
         <h3>The agent needs your help <span class="dim" style="font-size:12px;font-weight:400" id="esc-since"></span></h3>
         <div><b id="esc-ms"></b> <span class="dim" id="esc-reason"></span></div>
@@ -508,7 +519,7 @@ async function openProject(name, skipConfirm = false) {
   if (S.view === "project" && S.current === name && S.dirty) return;  // already here; keep your edits
   if (!skipConfirm && !confirmLeave()) return;
   try { await loadProject(name); } catch (e) { return toast(e.message); }
-  if (S.current !== name) S.toggled = new Set();
+  if (S.current !== name) { S.toggled = new Set(); S.reviewOpen = undefined; }
   S.view = "project"; S.current = name; show("#tpl-project");
   $("#p-name").textContent = name;
   $("#p-goal").oninput = () => { S.draft.goal = $("#p-goal").value; setDirty(true); };
@@ -516,7 +527,7 @@ async function openProject(name, skipConfirm = false) {
   $("#p-save").onclick = () => save();
   $("#p-run").onclick = run;
   $("#p-stop").onclick = stop;
-  $("#p-add").onclick = () => { S.draft.milestones.push({ title: "", instructions: "", check: "", status: "pending", restarts: 0, notes: [] }); setDirty(true); renderMilestones(); };
+  $("#p-add").onclick = () => { S.draft.milestones.push({ title: "", instructions: "", check: "", status: "pending", restarts: 0, notes: [], source: "" }); setDirty(true); renderMilestones(); };
   $("#esc-retry").onclick = () => answer("guidance");
   $("#esc-text").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); answer("guidance"); } };
   $("#ms-expand").onclick = () => { S.collapseDone = false; localStorage.setItem("collapseDone", "0"); S.toggled = new Set(); renderMilestones(); };
@@ -751,6 +762,9 @@ function renderStats() {
     tile("Needed you", String(t.escalations), `${t.guidance} hint${t.guidance === 1 ? "" : "s"} · ${t.skips} skipped`),
     tile("Files changed", String(t.files_changed), "distinct files"),
     tile("Tokens", fmtN(tokens), tokens == null ? "not recorded (older runs)" : `${fmtN(t.prompt_tokens)} in · ${fmtN(t.completion_tokens)} out`),
+    S.project && S.project.review ? (() => { const rv = S.project.review, q = rv.requirements || [];
+      return tile("Final review", rv.verdict === "error" ? "—" : rv.verdict === "regressions" ? `${(rv.regressions || []).length} broken` : `${q.filter(x => x.passed).length}/${q.length}`,
+        rv.verdict === "error" ? "could not run" : rv.verdict === "regressions" ? "milestones broke again" : "requirements pass"); })() : null,
     tile("Peak context", t.max_context ? fmtN(t.max_context) : "—", st.max_input_tokens ? `of ${fmtN(st.max_input_tokens)} max input` : "",
       ctxPct == null ? null : el("div", { class: "meter" + (ctxPct > 85 ? " hot" : ""), title: `${Math.round(ctxPct)}% of max_input_tokens` }, el("div", { style: `width:${ctxPct}%` }))));
 
@@ -897,6 +911,7 @@ function renderMilestones() {
     if (!finished) toggle.style.visibility = "hidden";
     head.prepend(toggle);
     if (finished) head.insertBefore(el("span", { class: `stag ${m.status}`, text: m.status }), status);
+    if (m.source === "review") head.insertBefore(el("span", { class: "stag review", text: "from review", title: "Added by the final review because a requirement of the goal failed" }), status);
     const body = el("div", { class: "body" },
       el("label", { text: "Instructions" }), instr,
       el("label", { text: "Check command (exit code 0 = done)" }), check,
@@ -924,6 +939,10 @@ function renderProjectChrome() {
   $("#p-run").title = jobActive() ? `'${j.project}' is running` : "";
   $("#p-save").disabled = !S.dirty || here;
   renderRunline();
+  renderReview();
+  // nothing left to do: Run does just the final review
+  const allDone = S.draft && !S.draft.milestones.some(m => m.status === "pending");
+  $("#p-run").textContent = allDone && S.project && S.project.final_review ? "Run final review" : "Run";
   // job message
   const msg = $("#p-jobmsg");
   if (j && j.project === S.current && j.message && !j.escalation) {
@@ -947,6 +966,42 @@ function renderProjectChrome() {
   // update never steals focus from a field you're typing in.
   const key = `${here}|${currentMilestoneIndex()}`;
   if (key !== S.msKey) { S.msKey = key; renderMilestones(); }
+}
+
+// The final review's report: which requirements of the goal pass, by real commands.
+function renderReview() {
+  const box = $("#p-review"); if (!box || !S.project) return;
+  const r = S.project.review;
+  if (!r) { box.classList.add("hidden"); return; }
+  const reqs = r.requirements || [];
+  const passed = reqs.filter(x => x.passed === true).length, failed = reqs.filter(x => x.passed === false).length;
+  const verdict = {
+    pass: ["✓", "st-ok", `All ${passed} checkable requirements pass`],
+    fail: ["✗", "st-bad", `${failed} of ${reqs.length} requirements fail`],
+    regressions: ["!", "st-bad", `${(r.regressions || []).length} finished milestone(s) broke again`],
+    error: ["!", "st-warn", "The review could not run"],
+  }[r.verdict] || ["", "", r.verdict];
+  box.className = `card review ${r.verdict}`;
+  const open = S.reviewOpen ?? (r.verdict !== "pass");
+  const list = el("div", { class: open ? "" : "hidden", style: "margin-top:8px" });
+  if (r.error) list.append(el("pre", { class: "mono", text: r.error }));
+  for (const g of r.regressions || [])
+    list.append(el("div", { class: "rq" }, el("span", { class: "g st-bad", text: "!" }),
+      el("span", {}, `Milestone ${g.milestone}: ${g.title} `, el("span", { class: "dim", text: "passed before, fails now" })),
+      el("details", {}, el("summary", { text: "check output" }), el("pre", { class: "mono", text: g.output || "(no output)" }))));
+  for (const q of reqs) {
+    const [g, cls, tip] = q.passed === true ? ["✓", "st-ok", "passes"] : q.passed === false ? ["✗", "st-bad", "fails"] : ["–", "dim", "no command could check this; check it yourself"];
+    list.append(el("div", { class: "rq" }, el("span", { class: "g " + cls, text: g, title: tip }), el("span", { text: q.requirement }),
+      q.check ? el("details", {}, el("summary", { text: q.passed ? "test command" : "test command and output" }),
+        el("pre", { class: "mono", text: `$ ${q.check}` + (q.output ? `\n\n${q.output}` : "") })) : null));
+  }
+  if ((r.added || []).length) list.append(el("div", { class: "dim", style: "font-size:12px;margin-top:6px", text: `Added ${r.added.length} milestone(s) so the agent fixes the failing requirements.` }));
+  const toggle = el("button", { class: "small", text: open ? "Hide" : "Details", onclick: () => { S.reviewOpen = !open; renderReview(); } });
+  box.replaceChildren(
+    el("div", { class: "row" }, el("h3", { text: "Final review" }), el("span", { class: "grow" }),
+      el("span", { class: "dim", style: "font-size:12px;white-space:nowrap", text: `round ${r.round} · ${(r.ts || "").replace("T", " ").slice(0, 16)}` }), toggle),
+    el("div", { style: "margin-top:4px" }, el("span", { class: verdict[1], style: "font-weight:700;margin-right:6px", text: verdict[0] }), verdict[2]),
+    list);
 }
 
 function renderRunline() {
@@ -1026,6 +1081,11 @@ function addFeed(r) {
       if (r.check_output) node.append(el("details", { style: "padding:0" }, el("summary", { text: "check output" }), el("pre", { class: "mono", text: r.check_output })));
       break;
     }
+    case "review":
+      node = el("div", { class: "ev say" }, el("span", { class: "t", text: time(r.ts) }), el("span", { class: "who", text: "final review" }),
+        r.verdict === "error" ? `could not run: ${r.error}` : r.regressions ? `${r.regressions} milestone(s) broken again` :
+        `${r.passed}/${r.passed + r.failed + r.unchecked} requirements pass` + ((r.added || []).length ? `, added ${r.added.length} milestone(s)` : ""));
+      break;
     case "escalate":
       node = el("div", { class: "ev say" }, el("span", { class: "t", text: time(r.ts) }), el("span", { class: "who", text: "needs help" }), `${r.title}: ${r.reason}`);
       break;
@@ -1091,9 +1151,9 @@ async function pollEvents() {
             if (ev.role === "tool_result" || ev.role === "check") files = true;
           } else addFeed(ev);
         }
-        if (["job", "planning", "contract", "turn", "milestone_start", "skip", "guidance"].includes(ev.kind)) refresh = true;
-        if (["job", "contract", "turn", "milestone_start", "skip", "guidance"].includes(ev.kind) && ev.project === S.current) reload = true;
-        if (["turn", "escalate", "guidance", "skip", "contract", "job"].includes(ev.kind) && ev.project === S.current) stats = true;
+        if (["job", "planning", "contract", "turn", "milestone_start", "skip", "guidance", "review"].includes(ev.kind)) refresh = true;
+        if (["job", "contract", "turn", "milestone_start", "skip", "guidance", "review"].includes(ev.kind) && ev.project === S.current) reload = true;
+        if (["turn", "escalate", "guidance", "skip", "contract", "job", "review"].includes(ev.kind) && ev.project === S.current) stats = true;
       }
       if (events.length) scrollFeed(false);
       if (refresh) scheduleRefresh(reload);
