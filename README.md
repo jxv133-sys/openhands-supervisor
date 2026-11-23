@@ -49,6 +49,11 @@ Then open **http://<that-machine>:8765** in a browser.
   check's output. Type a hint and *Retry with guidance*, or *Skip* / *Stop*.
 - **Stop** any time; progress is saved, *Run* resumes. Runs keep going when you
   close the tab; one run at a time (one GPU).
+- The browser tab title shows `⚠ <project> needs help` when the agent is waiting
+  on you, and (if you allow it) you get a desktop notification while the tab is
+  in the background. Finished milestones fold to one line; *Expand all* shows them.
+- Shortcuts: `Ctrl+S` saves the plan, `Ctrl+Enter` plans a new project or sends
+  guidance. On narrow screens the project list is behind the ☰ button.
 
 The code ends up in `./projects/<name>` on the host.
 
@@ -73,7 +78,8 @@ docker compose run --rm supervisor status todo-rs
 ```
 
 `auto` reads `PROJECT`, `REVIEW_PLAN` (1 = stop after planning) and
-`ON_ESCALATE` (`stop` or `skip`) from `.env`.
+`ON_ESCALATE` (`stop` or `skip`) from `.env`. `GOAL`, if set, is used instead
+of `goal.md`.
 
 How it works: the supervisor container gets the host's Docker socket, so the
 agent sandboxes it starts are normal sibling containers on the host (visible in

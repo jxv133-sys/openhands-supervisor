@@ -251,6 +251,12 @@ class Supervisor:
                         self.contract.save(self.project_dir)
                         self.log.say(f"Milestone {n} done.")
                         return
+                    # Stop pressed while the check ran (it can take minutes):
+                    # don't start another turn or ask the human first.
+                    if decision.action == Action.RESTART:
+                        milestone.restarts = state.restarts
+                        self.contract.save(self.project_dir)
+                    self._check_stop()
                     if decision.action == Action.NUDGE:
                         message = decision.message
                         continue

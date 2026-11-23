@@ -7,11 +7,13 @@ One run at a time (there's one GPU). Live updates use long-polling on
 
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import queue
 import re
 import threading
+import time
 import traceback
 from collections import deque
 from http import HTTPStatus
@@ -50,7 +52,8 @@ class EventBus:
 
     def since(self, after: int, timeout: float = 25.0) -> tuple[list[dict], int]:
         with self._cond:
-            if self._next_id - 1 <= after:
+            last = self._next_id - 1
+            if after == last:  # nothing new yet (after > last: we restarted, answer now)
                 self._cond.wait(timeout)
             events = [e for e in self._events if e["id"] > after]
             return events, self._next_id - 1
@@ -65,7 +68,11 @@ class Job:
         self.status = "starting"  # starting, running, stopping, finished, stopped, failed
         self.message = ""
         self.escalation: dict | None = None
+        self.started_at = time.time()
+        self.ended_at: float | None = None
         self._answers: queue.Queue[tuple[str, str]] = queue.Queue()
+        self._lock = threading.Lock()
+        self._stop_requested = False
         self.supervisor = None
         self.thread = threading.Thread(target=self._run, name=f"job-{project}", daemon=True)
 
@@ -76,11 +83,19 @@ class Job:
             "message": self.message,
             "escalation": self.escalation,
             "active": self.status in ("starting", "running", "stopping"),
+            "started_at": self.started_at,
+            "ended_at": self.ended_at,
+            "milestone": getattr(self.supervisor, "_milestone_n", 0) or None,
         }
+
+    def _publish(self) -> None:
+        self.app.bus.publish({"kind": "job", "project": self.project, "ts": _now(), **self.to_dict()})
 
     def _set(self, status: str, message: str = "") -> None:
         self.status, self.message = status, message
-        self.app.bus.publish({"kind": "job", "project": self.project, **self.to_dict()})
+        if status in ("finished", "stopped", "failed"):
+            self.ended_at = time.time()
+        self._publish()
 
     def _run(self) -> None:
         from .runner import Supervisor
@@ -90,51 +105,84 @@ class Job:
             contract = Contract.load(path)
             log = RunLog(path)
             log.add_listener(lambda rec: self.app.bus.publish({**rec, "project": self.project}))
-            self.supervisor = Supervisor(self.app.settings, path, contract, log, on_escalate=self._escalation)
-            self._set("running")
-            ok = self.supervisor.run()
-            if self.status == "stopping" or not ok and self.supervisor._stop.is_set():
+            supervisor = Supervisor(self.app.settings, path, contract, log, on_escalate=self._escalation)
+            with self._lock:
+                self.supervisor = supervisor
+                stop_early = self._stop_requested
+            if stop_early:  # Stop was pressed while we were still starting
+                supervisor.request_stop()
+            else:
+                self._set("running")
+            ok = supervisor.run()
+            if self._stop_requested or (not ok and supervisor._stop.is_set()):
                 self._set("stopped", "Stopped. Progress is saved; press Run to resume.")
             elif ok:
                 self._set("finished", "All milestones done.")
             else:
-                self._set("stopped", "Run ended before all milestones were done.")
+                c = supervisor.contract if hasattr(supervisor, "contract") else contract
+                skipped = sum(m.status == SKIPPED for m in c.milestones)
+                pending = len(c.pending())
+                parts = [f"{len(c.completed())}/{len(c.milestones)} milestones done"]
+                if skipped:
+                    parts.append(f"{skipped} skipped")
+                if pending:
+                    parts.append(f"{pending} still pending")
+                self._set("finished" if not pending else "stopped", "Run ended: " + ", ".join(parts) + ".")
         except Exception as exc:
             traceback.print_exc()
             self._set("failed", f"{type(exc).__name__}: {exc}")
 
     def _escalation(self, milestone, decision, check) -> tuple[str, str]:
         """Runs in the job thread: show the question in the UI and wait for an answer."""
+        if self._stop_requested:  # Stop was pressed during the last check: don't ask
+            return ("stop", "")
+        while True:  # drop answers left over from an earlier question (double clicks)
+            try:
+                self._answers.get_nowait()
+            except queue.Empty:
+                break
         self.escalation = {
             "milestone": milestone.title,
             "reason": decision.reason,
             "agent_text": decision.message if decision.message != decision.reason else "",
             "check": milestone.check,
             "check_output": check.output[-3000:],
+            "restarts": getattr(milestone, "restarts", 0),
+            "since": time.time(),
         }
-        self.app.bus.publish({"kind": "job", "project": self.project, **self.to_dict()})
+        self._publish()
         try:
             return self._answers.get()
         finally:
             self.escalation = None
-            self.app.bus.publish({"kind": "job", "project": self.project, **self.to_dict()})
+            self._publish()
 
     def answer(self, action: str, text: str) -> None:
-        if self.escalation is None:
-            raise ApiError(HTTPStatus.CONFLICT, "the agent is not waiting for an answer")
         if action not in ("guidance", "skip", "stop"):
             raise ApiError(HTTPStatus.BAD_REQUEST, "action must be guidance, skip or stop")
         if action == "guidance" and not text.strip():
             raise ApiError(HTTPStatus.BAD_REQUEST, "write some guidance first")
+        with self._lock:
+            # One answer per question: a second click (or a second browser tab)
+            # must not leave an answer queued for the next question.
+            if self.escalation is None or self.escalation.get("answered"):
+                raise ApiError(HTTPStatus.CONFLICT, "the agent is not waiting for an answer")
+            self.escalation["answered"] = action
         if action == "stop":
-            self.status = "stopping"
+            self._stop_requested = True
+            self._set("stopping", "Stopping...")
         self._answers.put((action, text.strip()))
 
     def stop(self) -> None:
+        with self._lock:
+            self._stop_requested = True
+            supervisor = self.supervisor
         self._set("stopping", "Stopping after the agent's current step...")
-        if self.supervisor is not None:
-            self.supervisor.request_stop()
-        if self.escalation is not None:
+        if supervisor is not None:
+            supervisor.request_stop()
+        escalation = self.escalation
+        if escalation is not None and not escalation.get("answered"):
+            escalation["answered"] = "stop"
             self._answers.put(("stop", ""))
 
 
@@ -277,6 +325,8 @@ class App:
             with self._lock:
                 self._planning.discard(name)
             self.bus.publish({"kind": "planning", "project": name, "active": False})
+        if Contract.path_for(path).exists():  # created meanwhile (CLI, another tab)
+            raise ApiError(HTTPStatus.CONFLICT, f"project {name!r} was created while planning")
         path.mkdir(parents=True, exist_ok=True)
         contract.save(path)
         self.bus.publish({"kind": "contract", "project": name})
@@ -284,8 +334,6 @@ class App:
 
     def save(self, name: str, data: dict) -> dict:
         path = self._require_contract(name)
-        if self._active_job_for(name):
-            raise ApiError(HTTPStatus.CONFLICT, "stop the run before editing the plan")
         try:
             contract = Contract.from_dict(data)
         except (ValueError, TypeError, AttributeError) as exc:
@@ -293,7 +341,10 @@ class App:
         for m in contract.milestones:
             if m.status not in (PENDING, DONE, SKIPPED):
                 raise ApiError(HTTPStatus.BAD_REQUEST, f"unknown status {m.status!r}")
-        contract.save(path)
+        with self._lock:  # same lock as start(): a run can't begin mid-save
+            if self._active_job_for(name):
+                raise ApiError(HTTPStatus.CONFLICT, "stop the run before editing the plan")
+            contract.save(path)
         self.bus.publish({"kind": "contract", "project": name})
         return self.project(name)
 
@@ -319,6 +370,10 @@ class App:
             raise ApiError(HTTPStatus.CONFLICT, "nothing is running")
         self.job.answer(action, text)
         return self.job.to_dict()
+
+
+def _now() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def _contract_dict(contract: Contract) -> dict:
@@ -361,7 +416,10 @@ def make_handler(app: App, token: str | None):
             return data
 
         def _authorized(self) -> bool:
-            return not token or self.headers.get("X-Token") == token
+            if not token:
+                return True
+            given = self.headers.get("X-Token") or ""
+            return hmac.compare_digest(given.encode(), token.encode())
 
         def _dispatch(self, method: str) -> None:
             url = urlparse(self.path)
@@ -380,7 +438,10 @@ def make_handler(app: App, token: str | None):
                     return self._json(HTTPStatus.OK, app.state())
                 if method == "GET" and route == ["events"]:
                     query = parse_qs(url.query)
-                    after = int((query.get("after") or ["0"])[0])
+                    try:
+                        after = int((query.get("after") or ["0"])[0])
+                    except ValueError as exc:
+                        raise ApiError(HTTPStatus.BAD_REQUEST, "after must be a number") from exc
                     events, last = app.bus.since(after)
                     return self._json(HTTPStatus.OK, {"events": events, "last": last})
                 if method == "POST" and route == ["projects"]:

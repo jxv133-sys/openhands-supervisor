@@ -84,7 +84,8 @@ def cmd_auto(args, settings: Settings) -> int:
 
     project = Path(os.environ.get("PROJECT", "").strip() or "project")
     goal_file = Path(os.environ.get("GOAL_FILE", "").strip() or "goal.md")
-    goal = read_goal(goal_file)
+    # $GOAL (if set) overrides goal.md, for one-off runs without editing the file.
+    goal = os.environ.get("GOAL", "").strip() or read_goal(goal_file)
     on_escalate = os.environ.get("ON_ESCALATE", "").strip().lower() or "stop"
     if on_escalate not in ESCALATE_MODES:
         print(f"ON_ESCALATE must be one of {', '.join(ESCALATE_MODES)}, not {on_escalate!r}")
@@ -97,14 +98,14 @@ def cmd_auto(args, settings: Settings) -> int:
         contract = Contract.load(project)
         if goal and goal != contract.goal:
             print(
-                f"Note: goal.md changed, but project '{project}' already has a plan; continuing that plan.\n"
+                f"Note: the goal changed (now: {goal[:80]!r}), but project '{project}' already has a plan; continuing that plan.\n"
                 f"To start the new goal, set a different PROJECT in .env, or delete {contract_path}.\n"
             )
     else:
         if not goal:
             print(
                 f"Nothing to do: {goal_file.name} is missing or empty, and project '{project}' has no plan yet.\n"
-                "Write what you want built in goal.md (next to docker-compose.yml), "
+                "Write what you want built in goal.md (next to docker-compose.yml) or set GOAL, "
                 "then run `docker compose up --build` again."
             )
             return 1
@@ -171,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
     w.add_argument("--projects", default=".", help="folder holding the projects (default: current folder)")
     w.set_defaults(func=cmd_web)
 
-    a = sub.add_parser("auto",help="unattended: plan from goal.md if needed, then run (env: PROJECT, GOAL_FILE, REVIEW_PLAN, ON_ESCALATE)")
+    a = sub.add_parser("auto", help="unattended: plan from goal.md if needed, then run (env: PROJECT, GOAL, GOAL_FILE, REVIEW_PLAN, ON_ESCALATE)")
     a.set_defaults(func=cmd_auto)
 
     s = sub.add_parser("status", help="show milestone progress")

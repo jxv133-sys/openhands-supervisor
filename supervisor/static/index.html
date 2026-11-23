@@ -154,21 +154,47 @@
   .code span.l::before { counter-increment: ln; content: counter(ln); display: inline-block; width: 3.2em; padding-right: 1em; text-align: right; color: #4b5263; user-select: none; }
 
   .toast { position: fixed; bottom: 16px; right: 16px; background: #3a1d1d; border: 1px solid #5a2b2b; color: #ffd6d6;
-    padding: 10px 14px; border-radius: 8px; max-width: 420px; z-index: 10; }
+    padding: 10px 14px; border-radius: 8px; max-width: 420px; z-index: 30; box-shadow: 0 6px 24px #0008; }
+  .toast.ok { background: #14291f; border-color: #1f5c43; color: #c8f5df; }
+  .chip.offline { color: var(--bad); border-color: #5a2b2b; }
+  .runline { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--dim); margin: -6px 0 12px; }
+  .runline b { color: var(--text); font-weight: 600; }
+  .ms .toggle { background: none; border: none; padding: 0 2px; color: var(--dim); width: 18px; }
+  .ms.collapsed .body, .ms.collapsed .head select, .ms.collapsed .head button:not(.toggle) { display: none; }
+  .ms.collapsed .head input { background: none; border-color: transparent; }
+  .ms.collapsed { padding-top: 8px; padding-bottom: 8px; }
+  .ms .stag { font-size: 11px; border-radius: 4px; padding: 0 6px; border: 1px solid var(--border); }
+  .ms .stag.done { color: var(--ok); border-color: #1f5c43; } .ms .stag.skipped { color: var(--warn); border-color: #6b5320; }
+  .msbar { display: flex; gap: 8px; align-items: center; margin: 4px 0 10px; font-size: 12px; }
+  .jump { position: absolute; right: 24px; bottom: 16px; z-index: 5; box-shadow: 0 4px 16px #0009; }
+  .feedwrap { position: relative; }
+  .kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; color: var(--dim); }
+  #menubtn { display: none; padding: 2px 9px; }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
     border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (max-width: 1000px) {
-    .layout { grid-template-columns: 1fr; } aside { display: none; }
-    .project { grid-template-columns: 1fr; } .feedwrap { height: 60vh; }
+    #menubtn { display: inline-block; }
+    .layout { grid-template-columns: 1fr; }
+    /* the sidebar becomes a slide-over opened with the menu button */
+    aside { display: none; position: fixed; top: 48px; left: 0; bottom: 0; width: 280px; z-index: 20; box-shadow: 4px 0 24px #000a; }
+    body.menu-open aside { display: block; }
+    .project { grid-template-columns: 1fr; grid-template-rows: auto; overflow-y: auto; }
+    .project > .scroll:first-child { border-right: none; border-bottom: 1px solid var(--border); overflow: visible; }
+    .feedwrap { height: 75vh; }
+    .files { grid-template-columns: 1fr; grid-template-rows: 30% minmax(0, 1fr); }
+    .filelist { border-right: none; border-bottom: 1px solid var(--border); }
+    #model { display: none; }
   }
 </style>
 </head>
 <body>
 <header>
+  <button id="menubtn" title="Projects">☰</button>
   <h1>OpenHands Supervisor</h1>
   <span class="chip" id="model"></span>
   <span class="grow"></span>
+  <span class="chip offline hidden" id="offline" title="Can't reach the supervisor; retrying">disconnected</span>
   <span class="chip" id="jobchip">idle</span>
 </header>
 <div class="layout">
@@ -201,6 +227,7 @@
       <textarea id="np-goal" rows="12" placeholder="A Rust command-line todo app with add, list, done and remove commands that stores tasks in a JSON file"></textarea>
       <div class="row" style="margin-top:12px">
         <button class="primary" id="np-plan">Plan milestones</button>
+        <span class="kbd">Ctrl+Enter</span>
         <span id="np-status" class="dim"></span>
       </div>
     </div>
@@ -217,13 +244,14 @@
         <span class="chip" id="p-progress"></span>
         <span class="grow"></span>
         <span class="unsaved hidden" id="p-unsaved">unsaved changes</span>
-        <button id="p-save" disabled>Save</button>
+        <button id="p-save" disabled title="Save (Ctrl+S)">Save</button>
         <button class="primary" id="p-run">Run</button>
         <button class="danger hidden" id="p-stop">Stop</button>
       </div>
+      <div class="runline hidden" id="p-runline"></div>
       <div id="p-jobmsg" class="card hidden"></div>
       <div id="p-esc" class="card escalation hidden">
-        <h3>The agent needs your help</h3>
+        <h3>The agent needs your help <span class="dim" style="font-size:12px;font-weight:400" id="esc-since"></span></h3>
         <div><b id="esc-ms"></b> <span class="dim" id="esc-reason"></span></div>
         <div id="esc-agentwrap"><label>Agent said</label><pre id="esc-agent"></pre></div>
         <label>Check output (<span class="mono" id="esc-check"></span>)</label>
@@ -231,7 +259,7 @@
         <label>Guidance for the agent (added to this milestone's notes, then it retries fresh)</label>
         <textarea id="esc-text" rows="3" placeholder="e.g. Use serde_json::from_str, and put the tests in src/storage.rs"></textarea>
         <div class="row" style="margin-top:8px">
-          <button class="primary" id="esc-retry">Retry with guidance</button>
+          <button class="primary" id="esc-retry" title="Ctrl+Enter">Retry with guidance</button>
           <button id="esc-skip">Skip milestone</button>
           <button class="danger" id="esc-stop">Stop run</button>
         </div>
@@ -242,6 +270,8 @@
         <label>Setup commands (one per line; run in the sandbox before the agent starts, every run)</label>
         <textarea id="p-setup" class="mono" rows="2"></textarea>
       </div>
+      <div class="msbar"><span class="dim" id="ms-count"></span><span class="grow"></span>
+        <button class="small" id="ms-expand">Expand all</button><button class="small" id="ms-collapse">Collapse finished</button></div>
       <div id="p-ms"></div>
       <button id="p-add">+ Add milestone</button>
     </div>
@@ -259,6 +289,7 @@
       </div>
       <div class="pane" id="pane-chat"><div id="chat"></div></div>
       <div class="pane hidden" id="pane-activity"><div id="feed"></div></div>
+      <button class="jump hidden" id="jump">↓ Latest</button>
       <div class="pane hidden" id="pane-files" style="overflow:hidden">
         <div class="files">
           <div class="filelist" id="filelist"></div>
@@ -300,6 +331,9 @@ const S = {
   unreadFiles: 0,
   files: null,       // /api/projects/<name>/files
   openFile: null,    // {path, mtime}
+  toggled: new Set(), // finished milestones the user folded/unfolded against the default
+  collapseDone: localStorage.getItem("collapseDone") !== "0",
+  online: true,
 };
 
 // ---------- API ----------
@@ -309,23 +343,36 @@ async function api(method, path, body) {
   if (token) headers["X-Token"] = token;
   const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
   if (res.status === 401) {
-    const t = prompt("This supervisor needs its access token (WEB_TOKEN):");
-    if (t) { localStorage.setItem("supervisorToken", t); return api(method, path, body); }
+    // Only one prompt even when several requests (e.g. the event poll) fail at once.
+    if (!api._asking) api._asking = Promise.resolve().then(() => {
+      localStorage.removeItem("supervisorToken");
+      const t = prompt(token ? "That access token was rejected. Enter WEB_TOKEN:" : "This supervisor needs its access token (WEB_TOKEN):");
+      if (t) localStorage.setItem("supervisorToken", t.trim());
+      api._asking = null;
+      return !!t;
+    });
+    if (await api._asking) return api(method, path, body);
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 }
-function toast(msg) {
-  const t = $("#toast"); t.textContent = msg; t.classList.remove("hidden");
-  clearTimeout(toast._h); toast._h = setTimeout(() => t.classList.add("hidden"), 6000);
+function toast(msg, kind = "error") {
+  const t = $("#toast"); t.textContent = msg; t.className = "toast" + (kind === "ok" ? " ok" : "");
+  clearTimeout(toast._h); toast._h = setTimeout(() => t.classList.add("hidden"), kind === "ok" ? 2500 : 6000);
+}
+$("#toast").onclick = () => $("#toast").classList.add("hidden");
+function duration(sec) {
+  sec = Math.max(0, Math.floor(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60, s = sec % 60;
+  return (h ? `${h}h ` : "") + (h || m ? `${m}m ` : "") + `${s}s`;
 }
 
 // ---------- state ----------
 async function refreshState() {
   S.state = await api("GET", "/api/state");
   $("#model").textContent = S.state.model;
-  renderSidebar(); renderJobChip();
+  renderSidebar(); renderJobChip(); renderTitle();
   if (S.view === "project") renderProjectChrome();
 }
 async function loadProject(name, { keepDraft = false } = {}) {
@@ -350,8 +397,10 @@ function renderSidebar() {
       bar.append(el("div", { class: "done", style: `width:${100 * p.done / p.total}%` }));
       bar.append(el("div", { class: "skip", style: `width:${100 * (p.skipped || 0) / p.total}%` }));
     }
-    const meta = el("div", { class: "dim", style: "font-size:12px", text: p.error ? "invalid plan" : `${p.done}/${p.total} milestones` });
-    box.append(el("div", { class: "proj" + (S.current === p.name && S.view === "project" ? " active" : ""), onclick: () => openProject(p.name) }, name, meta, bar));
+    const meta = el("div", { class: "dim", style: "font-size:12px", text: p.error ? "invalid plan" : `${p.done}/${p.total} done` + (p.skipped ? ` · ${p.skipped} skipped` : "") });
+    const goal = (p.goal || "").split("\n")[0];
+    box.append(el("div", { class: "proj" + (S.current === p.name && S.view === "project" ? " active" : ""), title: goal,
+      onclick: () => { document.body.classList.remove("menu-open"); openProject(p.name); } }, name, meta, bar));
   }
   for (const name of S.state.planning) {
     box.append(el("div", { class: "proj" }, el("div", { class: "name" }, el("span", { class: "spinner" }), name), el("div", { class: "dim", style: "font-size:12px", text: "planning..." })));
@@ -366,6 +415,19 @@ function renderJobChip() {
   else if (j.status === "failed") { chip.classList.add("failed"); chip.textContent = `${j.project}: failed`; }
   else chip.textContent = `${j.project}: ${j.status}`;
   chip.style.cursor = "pointer"; chip.onclick = () => openProject(j.project);
+}
+// The tab title shows when the agent needs you, even while you're in another tab.
+function renderTitle() {
+  const j = job(); let t = "OpenHands Supervisor";
+  if (j && j.active && j.escalation) t = `⚠ ${j.project} needs help`;
+  else if (j && j.active) t = `▶ ${j.project}`;
+  document.title = t;
+  const key = j && j.active && j.escalation ? `${j.project}|${j.escalation.since}` : "";
+  if (key && key !== S.notified) {
+    S.notified = key;
+    if (document.hidden && "Notification" in window && Notification.permission === "granted")
+      try { new Notification(`${j.project}: the agent needs your help`, { body: j.escalation.reason }); } catch (e) { /* ignore */ }
+  }
 }
 
 // ---------- views ----------
@@ -384,16 +446,26 @@ function openNew() {
     $("#np-status").replaceChildren(el("span", { class: "spinner" }), ` Planning with ${S.state.model}...`);
     try {
       await api("POST", "/api/projects", { name, goal });
-      await refreshState(); await openProject(name, true);
+      await refreshState();
+      // Planning takes a while; if you went to another project meanwhile, don't
+      // yank you away (and lose edits there). The new plan is in the sidebar.
+      if (S.view === "new") await openProject(name, true);
+      else toast(`Plan for '${name}' is ready.`, "ok");
     } catch (e) {
-      toast(e.message); $("#np-plan").disabled = false; $("#np-status").textContent = "";
+      toast(e.message);
+      if (S.view === "new" && $("#np-plan")) { $("#np-plan").disabled = false; $("#np-status").textContent = ""; }
     }
   };
+  const submit = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("#np-plan").click(); } };
+  $("#np-goal").onkeydown = submit; $("#np-name").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("#np-goal").focus(); } else submit(e); };
+  $("#np-name").focus();
 }
 
 async function openProject(name, skipConfirm = false) {
-  if (!skipConfirm && S.current !== name && !confirmLeave()) return;
+  if (S.view === "project" && S.current === name && S.dirty) return;  // already here; keep your edits
+  if (!skipConfirm && !confirmLeave()) return;
   try { await loadProject(name); } catch (e) { return toast(e.message); }
+  if (S.current !== name) S.toggled = new Set();
   S.view = "project"; S.current = name; show("#tpl-project");
   $("#p-name").textContent = name;
   $("#p-goal").oninput = () => { S.draft.goal = $("#p-goal").value; setDirty(true); };
@@ -403,6 +475,10 @@ async function openProject(name, skipConfirm = false) {
   $("#p-stop").onclick = stop;
   $("#p-add").onclick = () => { S.draft.milestones.push({ title: "", instructions: "", check: "", status: "pending", restarts: 0, notes: [] }); setDirty(true); renderMilestones(); };
   $("#esc-retry").onclick = () => answer("guidance");
+  $("#esc-text").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); answer("guidance"); } };
+  $("#ms-expand").onclick = () => { S.collapseDone = false; localStorage.setItem("collapseDone", "0"); S.toggled = new Set(); renderMilestones(); };
+  $("#ms-collapse").onclick = () => { S.collapseDone = true; localStorage.setItem("collapseDone", "1"); S.toggled = new Set(); renderMilestones(); };
+  $("#jump").onclick = () => { $("#f-follow").checked = true; scrollFeed(true); };
   $("#esc-skip").onclick = () => answer("skip");
   $("#esc-stop").onclick = () => answer("stop");
   $("#f-thinking").checked = localStorage.getItem("showThinking") === "1";
@@ -413,7 +489,7 @@ async function openProject(name, skipConfirm = false) {
   $("#f-changed").onchange = renderFileList;
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => switchTab(b.dataset.tab));
   watchScroll($("#pane-chat")); watchScroll($("#pane-activity"));
-  $("#f-follow").onchange = () => { if ($("#f-follow").checked) scrollFeed(true); };
+  $("#f-follow").onchange = () => { if ($("#f-follow").checked) scrollFeed(true); renderJump(); };
   renderEditor(); renderProjectChrome(); renderSidebar();
   // history from disk, then live events continue appending
   $("#feed").replaceChildren(); S.feedCount = 0;
@@ -436,7 +512,11 @@ function switchTab(name) {
   $("#opt-changed").classList.toggle("hidden", name !== "files");
   if (name === "chat") { S.unreadChat = 0; badge("#n-chat", 0); }
   if (name === "files") { S.unreadFiles = 0; badge("#n-files", 0); loadFiles(); }
-  scrollFeed(true);
+  scrollFeed(true); renderJump();
+}
+function renderJump() {
+  const b = $("#jump"); if (!b) return;
+  b.classList.toggle("hidden", S.tab === "files" || $("#f-follow").checked);
 }
 function badge(sel, n) { const b = $(sel); if (!b) return; b.textContent = n > 99 ? "99+" : String(n); b.classList.toggle("hidden", !n); }
 
@@ -581,7 +661,7 @@ function setDirty(d) {
   S.dirty = d;
   if (S.view !== "project") return;
   $("#p-unsaved").classList.toggle("hidden", !d);
-  $("#p-save").disabled = !d || jobHere();
+  $("#p-save").disabled = !d || jobHere() || S.saving;
 }
 
 function renderEditor() {
@@ -604,8 +684,8 @@ function renderMilestones() {
     const status = el("select", { onchange: upd("status") },
       ...["pending", "done", "skipped"].map(s => { const o = el("option", { value: s, text: s }); if (m.status === s) o.selected = true; return o; }));
     const move = (d) => () => { const j = i + d; if (j < 0 || j >= S.draft.milestones.length) return;
-      [S.draft.milestones[i], S.draft.milestones[j]] = [S.draft.milestones[j], S.draft.milestones[i]]; setDirty(true); renderMilestones(); };
-    const del = () => { if (confirm(`Delete milestone ${i + 1}?`)) { S.draft.milestones.splice(i, 1); setDirty(true); renderMilestones(); } };
+      [S.draft.milestones[i], S.draft.milestones[j]] = [S.draft.milestones[j], S.draft.milestones[i]]; S.toggled = new Set(); setDirty(true); renderMilestones(); };
+    const del = () => { if (confirm(`Delete milestone ${i + 1}?`)) { S.draft.milestones.splice(i, 1); S.toggled = new Set(); setDirty(true); renderMilestones(); } };
     const title = el("input", { value: m.title, placeholder: "Milestone title", oninput: upd("title") });
     const head = el("div", { class: "head" }, el("span", { class: "num", text: `${i + 1}.` }), title, status,
       el("button", { class: "small", title: "Move up", onclick: move(-1), text: "↑" }),
@@ -616,14 +696,27 @@ function renderMilestones() {
     const notes = el("textarea", { rows: "1", placeholder: "Hints for the agent (one per line)",
       oninput: (e) => { m.notes = e.target.value.split("\n").map(s => s.trim()).filter(Boolean); setDirty(true); } });
     notes.value = (m.notes || []).join("\n");
-    const meta = el("div", { class: "meta", text: [i === cur ? "▶ in progress" : "", m.restarts ? `${m.restarts} restart(s)` : ""].filter(Boolean).join(" · ") });
-    const card = el("div", { class: `card ms st-${i === cur ? "current" : m.status}` }, head,
+    const meta = el("div", { class: "meta", text: [i === cur ? "▶ in progress" : "", m.restarts ? `${m.restarts} restart(s)` : "",
+      (m.notes || []).length ? `${m.notes.length} note(s)` : ""].filter(Boolean).join(" · ") });
+    // Finished milestones fold to one line so the one that matters stays in view.
+    const finished = m.status !== "pending" && i !== cur;
+    const collapsed = finished && (S.collapseDone !== S.toggled.has(i));
+    const toggle = el("button", { class: "toggle", title: collapsed ? "Show details" : "Hide details", text: collapsed ? "▸" : "▾",
+      onclick: () => { if (!S.toggled.delete(i)) S.toggled.add(i); renderMilestones(); } });
+    if (!finished) toggle.style.visibility = "hidden";
+    head.prepend(toggle);
+    if (finished) head.insertBefore(el("span", { class: `stag ${m.status}`, text: m.status }), status);
+    const body = el("div", { class: "body" },
       el("label", { text: "Instructions" }), instr,
       el("label", { text: "Check command (exit code 0 = done)" }), check,
       el("label", { text: "Notes / guidance" }), notes, meta);
-    card.querySelectorAll("input, textarea, select, button").forEach(n => n.disabled = locked);
+    const card = el("div", { class: `card ms st-${i === cur ? "current" : m.status}` + (collapsed ? " collapsed" : "") }, head, body);
+    card.querySelectorAll("input, textarea, select, button:not(.toggle)").forEach(n => n.disabled = locked);
     box.append(card);
   });
+  const ms = S.draft.milestones;
+  $("#ms-count").textContent = `${ms.length} milestone${ms.length === 1 ? "" : "s"} · ${ms.filter(m => m.status === "done").length} done` +
+    (ms.some(m => m.status === "skipped") ? ` · ${ms.filter(m => m.status === "skipped").length} skipped` : "");
   $("#p-add").disabled = locked;
   $("#p-goal").disabled = locked; $("#p-setup").disabled = locked;
 }
@@ -639,6 +732,7 @@ function renderProjectChrome() {
   $("#p-run").disabled = jobActive();
   $("#p-run").title = jobActive() ? `'${j.project}' is running` : "";
   $("#p-save").disabled = !S.dirty || here;
+  renderRunline();
   // job message
   const msg = $("#p-jobmsg");
   if (j && j.project === S.current && j.message && !j.escalation) {
@@ -655,6 +749,8 @@ function renderProjectChrome() {
     $("#esc-agent").textContent = esc.agent_text || "";
     $("#esc-check").textContent = esc.check;
     $("#esc-output").textContent = esc.check_output || "(no output)";
+    for (const id of ["#esc-retry", "#esc-skip", "#esc-stop"]) $(id).disabled = !!esc.answered;
+    if (S.escShown !== esc.since) { S.escShown = esc.since; for (const box of [$(".project > .scroll"), $(".project")]) box.scrollTo({ top: 0, behavior: "smooth" }); $("#esc-text").focus({ preventScroll: true }); }
   }
   // Re-render the editor only when lock/progress state changes, so a live
   // update never steals focus from a field you're typing in.
@@ -662,29 +758,58 @@ function renderProjectChrome() {
   if (key !== S.msKey) { S.msKey = key; renderMilestones(); }
 }
 
+function renderRunline() {
+  const box = $("#p-runline"); if (!box) return;
+  const j = job();
+  if (!j || j.project !== S.current || !j.started_at) { box.classList.add("hidden"); return; }
+  const total = S.draft ? S.draft.milestones.length : 0;
+  const end = j.ended_at || Date.now() / 1000;
+  const parts = [];
+  if (j.active && j.milestone) parts.push(["milestone", `${j.milestone}/${total}`]);
+  parts.push([j.active ? "running for" : "ran for", duration(end - j.started_at)]);
+  if (j.active && j.escalation && j.escalation.since) parts.push(["waiting on you", duration(Date.now() / 1000 - j.escalation.since)]);
+  box.replaceChildren(...parts.map(([k, v]) => el("span", {}, `${k} `, el("b", { text: v }))));
+  box.classList.remove("hidden");
+}
+setInterval(() => { if (S.view === "project" && jobActive()) { renderRunline(); if (job().escalation) $("#esc-since").textContent = `(waiting ${duration(Date.now() / 1000 - job().escalation.since)})`; } }, 1000);
+
 // ---------- actions ----------
 async function save(quiet) {
+  if (S.saving || !S.dirty) return !S.dirty;
+  S.saving = true; $("#p-save").disabled = true;
+  const name = S.current;
   try {
-    S.project = await api("PUT", `/api/projects/${encodeURIComponent(S.current)}`, { contract: S.draft });
-    S.draft = structuredClone(S.project.contract); setDirty(false); renderEditor();
+    const p = await api("PUT", `/api/projects/${encodeURIComponent(name)}`, { contract: S.draft });
+    if (S.current === name) { S.project = p; S.draft = structuredClone(p.contract); S.saving = false; setDirty(false); renderEditor(); }
+    if (!quiet) toast("Plan saved.", "ok");
     await refreshState();
     return true;
   } catch (e) { toast(e.message); return false; }
+  finally { S.saving = false; if (S.view === "project") setDirty(S.dirty); }
 }
 async function run() {
-  if (S.dirty && !(await save())) return;
+  if (S.dirty && !(await save(true))) return;
+  // Ask once so we can tell you when the agent needs help while this tab is in the background.
+  if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {});
+  $("#p-run").disabled = true;
   try { await api("POST", `/api/projects/${encodeURIComponent(S.current)}/run`); await refreshState(); }
-  catch (e) { toast(e.message); }
+  catch (e) { toast(e.message); renderProjectChrome(); }
 }
 async function stop() {
+  if (!confirm("Stop the run? The agent's current step finishes first; progress is saved.")) return;
   try { await api("POST", "/api/stop"); await refreshState(); } catch (e) { toast(e.message); }
 }
 async function answer(action) {
   const text = $("#esc-text").value;
-  if (action === "guidance" && !text.trim()) return toast("Write some guidance first.");
+  if (action === "guidance" && !text.trim()) { $("#esc-text").focus(); return toast("Write some guidance first."); }
   if (action === "stop" && !confirm("Stop the run? Progress is saved.")) return;
-  try { await api("POST", "/api/answer", { action, text }); $("#esc-text").value = ""; await refreshState(); }
-  catch (e) { toast(e.message); }
+  if (action === "skip" && !confirm("Skip this milestone and move on to the next one?")) return;
+  for (const id of ["#esc-retry", "#esc-skip", "#esc-stop"]) $(id).disabled = true;
+  try {
+    await api("POST", "/api/answer", { action, text }); $("#esc-text").value = "";
+    toast(action === "guidance" ? "Guidance sent; the agent retries this milestone fresh." : action === "skip" ? "Milestone skipped." : "Stopping...", "ok");
+    await refreshState();
+  } catch (e) { toast(e.message); for (const id of ["#esc-retry", "#esc-skip", "#esc-stop"]) $(id).disabled = false; }
 }
 
 // ---------- activity feed ----------
@@ -737,8 +862,8 @@ function watchScroll(pane) {
   pane.addEventListener("scroll", () => {
     const fromBottom = pane.scrollHeight - pane.scrollTop - pane.clientHeight;
     const box = $("#f-follow"); if (!box) return;
-    if (fromBottom > 120 && box.checked) box.checked = false;
-    else if (fromBottom < 30 && !box.checked) box.checked = true;
+    if (fromBottom > 120 && box.checked) { box.checked = false; renderJump(); }
+    else if (fromBottom < 30 && !box.checked) { box.checked = true; renderJump(); }
   }, { passive: true });
 }
 
@@ -763,8 +888,9 @@ async function pollEvents() {
   for (;;) {
     try {
       const { events, last } = await api("GET", `/api/events?after=${S.lastEvent}`);
-      if (last < S.lastEvent) S.lastEvent = 0;  // server restarted
+      setOnline(true);
       let refresh = false, reload = false, files = false;
+      if (last < S.lastEvent) { S.lastEvent = 0; refresh = reload = true; }  // server restarted: our state is stale
       for (const ev of events) {
         S.lastEvent = Math.max(S.lastEvent, ev.id);
         if (S.view === "project" && ev.project === S.current) {
@@ -775,19 +901,33 @@ async function pollEvents() {
           } else addFeed(ev);
         }
         if (["job", "planning", "contract", "turn", "milestone_start", "skip", "guidance"].includes(ev.kind)) refresh = true;
-        if (["job", "contract", "turn", "skip", "guidance"].includes(ev.kind) && ev.project === S.current) reload = true;
+        if (["job", "contract", "turn", "milestone_start", "skip", "guidance"].includes(ev.kind) && ev.project === S.current) reload = true;
       }
       if (events.length) scrollFeed(false);
       if (refresh) scheduleRefresh(reload);
       if (files) scheduleFiles();
     } catch (e) {
+      setOnline(false);
       await new Promise(r => setTimeout(r, 3000));
     }
   }
 }
+function setOnline(on) {
+  if (on === S.online) return;
+  S.online = on; $("#offline").classList.toggle("hidden", on);
+  if (on) scheduleRefresh(true);  // catch up on whatever happened while we were away
+}
 
 // ---------- boot ----------
-$("#newbtn").onclick = openNew;
+$("#newbtn").onclick = () => { document.body.classList.remove("menu-open"); openNew(); };
+$("#menubtn").onclick = () => document.body.classList.toggle("menu-open");
+$("main").addEventListener("click", () => document.body.classList.remove("menu-open"));
+document.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && S.view === "project") {
+    e.preventDefault(); if (S.dirty && !jobHere()) save();
+  }
+  if (e.key === "Escape") document.body.classList.remove("menu-open");
+});
 window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ""; } });
 (async () => {
   try { await refreshState(); } catch (e) { toast(e.message); return; }
