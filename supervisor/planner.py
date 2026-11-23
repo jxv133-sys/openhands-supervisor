@@ -48,6 +48,15 @@ CHECK_RULES = """Rules for checks (they are run after EVERY step, many times, in
   Do not use `--exact` (tests inside `mod tests` would not match).
   pytest needs no grep: `python -m pytest tests/test_add.py -q` already fails if nothing ran.
 - No user input, no server left running, no GUI.
+- Rust: unit tests in `#[cfg(test)] mod tests`; for command-line behaviour, integration
+  tests in `tests/*.rs` that run the real binary with
+  `std::process::Command::new(env!("CARGO_BIN_EXE_<name>"))` in a fresh temporary
+  directory (no extra crates needed). Check: `cargo test <test name>` with the tee/grep above.
+- Python: pytest tests in `tests/test_*.py`; use the `tmp_path` fixture for files, and
+  `subprocess.run([sys.executable, ...])` for command-line behaviour. Dependencies go in
+  pyproject.toml or requirements.txt.
+- Tests must check behaviour with real asserts (outputs, files written, error messages),
+  not just that the code runs.
 """
 
 PLANNER_PROMPT = """You plan software projects for a coding agent that works in a Linux (Debian) sandbox.

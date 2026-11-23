@@ -22,6 +22,9 @@ class Settings:
     llm_timeout: int = 900
     # Stream the model's output token by token, so the web UI can show it live.
     stream: bool = True
+    # Rust/Python: a check that ran 0 tests, or passed because the agent skipped
+    # or deleted tests, doesn't count; the final review runs the whole suite.
+    test_guard: bool = True
     # Cut off a reply that keeps repeating itself mid-generation (needs stream).
     loop_guard: bool = True
     # Sampling knobs that make reasoning models loop less. None/0 = Ollama's default.

@@ -34,6 +34,10 @@ def milestone_prompt(contract: Contract, milestone: Milestone, handoff: str = ""
         "- Work in small steps: create or edit ONE file per step, then run the check and fix errors.\n"
         "- Never write several files in one response.\n"
         "- Do not ask for permission or confirmation. Make reasonable decisions yourself.\n"
+        "- Never skip (#[ignore], pytest.skip), weaken or delete tests to make the check pass: fix the code. "
+        "The supervisor checks for this and will not accept it.\n"
+        "- Declare every dependency (Cargo.toml, pyproject.toml or requirements.txt). The project must work "
+        "on a fresh machine, not only in this sandbox.\n"
         "- When the check command passes, call the finish tool with a one-line summary."
     )
     if handoff:

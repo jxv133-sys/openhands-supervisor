@@ -12,6 +12,11 @@ llm_timeout = 900
 # Stream the agent's output token by token so the web UI shows it as it's
 # written. Turn off if your Ollama version mishandles streaming with tools.
 stream = true
+# Rust/Python test guard: a passing check that ran 0 tests, or that passes
+# because the agent skipped (#[ignore], pytest.skip...) or deleted tests,
+# counts as failed. The final review also runs the full cargo test / pytest
+# suite, Python in a clean virtualenv with only the declared dependencies.
+test_guard = true
 # Watch the streamed reply and cut it off if the model starts repeating itself
 # mid-generation (a "thinking loop"); the milestone then restarts fresh.
 loop_guard = true

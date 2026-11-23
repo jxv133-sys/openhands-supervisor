@@ -65,6 +65,10 @@ toolchain already installed, that exits 0 only if the requirement really works. 
   `out=$(cargo run -q -- list 2>&1); echo "$out"; echo "$out" | grep -F 'buy milk'`.
 - Use the file names and commands that actually exist in the project files below.
 - No user input, no server left running, no GUI. Must finish within a few minutes.
+- Rust: build and run the binary (`cargo run -q -- <args>`) or the crate's tests. Python: run the
+  program with `python3 ...` or `python -m <package> ...`.
+- Include error behaviour the goal mentions (unknown ids, missing files, bad input), not only the
+  main feature.
 - If a requirement truly cannot be checked by a command, use "" as its check.
 
 Goal:

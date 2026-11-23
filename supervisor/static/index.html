@@ -361,7 +361,11 @@
   .rail .done { background: var(--ok); } .rail .skipped { background: var(--warn); }
   .rail .current { background: var(--accent); box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 25%, transparent); animation: railglow 1.8s ease-in-out infinite alternate; }
   @keyframes railglow { to { box-shadow: 0 0 10px 2px color-mix(in oklab, var(--accent) 45%, transparent); } }
-  .runline { margin: -10px 0 14px; }
+  .runline { margin: -10px 0 14px; align-items: center; }
+  .ctx { display: inline-flex; align-items: center; gap: 6px; }
+  .ctx .gauge { width: 64px; height: 5px; border-radius: 3px; background: var(--border); overflow: hidden; display: inline-block; }
+  .ctx .gauge > i { display: block; height: 100%; border-radius: 3px; background: var(--sky); transition: width .4s ease; }
+  .ctx.hot .gauge > i { background: var(--warn); }
 
   /* milestones: a vertical track with a status node per stop */
   #p-ms { position: relative; padding-left: 28px; }
@@ -769,6 +773,7 @@ async function openProject(name, skipConfirm = false) {
   for (const rec of S.project.log) addFeed(rec);
   $("#chat").replaceChildren(); $("#live").replaceChildren(); S.calls = new Map(); S.chatCount = 0;
   S.live = null; S.lastRole = null; S.lastSummary = null; S.phase = null; S.lastActivityAt = null;
+  S.context = S.project.context || null;
   for (const rec of S.project.chat) addChat(rec);
   S.lastActivityAt = Date.now();
   if (S.project.live) { startLive(S.project.live); renderLive(); }
@@ -1085,6 +1090,13 @@ function renderStats() {
     S.project && S.project.review ? (() => { const rv = S.project.review, q = rv.requirements || [];
       return tile("Final review", rv.verdict === "error" ? "—" : rv.verdict === "regressions" ? `${(rv.regressions || []).length} broken` : `${q.filter(x => x.passed).length}/${q.length}`,
         rv.verdict === "error" ? "could not run" : rv.verdict === "regressions" ? "milestones broke again" : "requirements pass"); })() : null,
+    (() => { // live while running, else the last turn's prompt size
+      const now = jobHere() && S.context ? S.context.tokens : t.last_context, max = st.max_input_tokens;
+      if (!now) return null;
+      const pct = max ? Math.min(100, 100 * now / max) : null;
+      return tile(jobHere() && S.context ? "Context now" : "Last context", fmtN(now), max ? `${Math.round(pct)}% of ${fmtN(max)} max input` : "",
+        pct == null ? null : el("div", { class: "meter" + (pct > 85 ? " hot" : "") }, el("div", { style: `width:${pct}%` })));
+    })(),
     tile("Peak context", t.max_context ? fmtN(t.max_context) : "—", st.max_input_tokens ? `of ${fmtN(st.max_input_tokens)} max input` : "",
       ctxPct == null ? null : el("div", { class: "meter" + (ctxPct > 85 ? " hot" : ""), title: `${Math.round(ctxPct)}% of max_input_tokens` }, el("div", { style: `width:${ctxPct}%` }))));
 
@@ -1403,7 +1415,16 @@ function renderRunline() {
   if (j.active && j.milestone) parts.push(["milestone", `${j.milestone}/${total}`]);
   parts.push([j.active ? "running for" : "ran for", duration(end - j.started_at)]);
   if (j.active && j.escalation && j.escalation.since) parts.push(["waiting on you", duration(Date.now() / 1000 - j.escalation.since)]);
-  box.replaceChildren(...parts.map(([k, v]) => el("span", {}, `${k} `, el("b", { text: v }))));
+  const nodes = parts.map(([k, v]) => el("span", {}, `${k} `, el("b", { text: v })));
+  // How full the model's context is right now (prompt size of its latest call).
+  const c = j.active && S.context;
+  if (c && c.tokens) {
+    const pct = Math.min(100, 100 * c.tokens / c.max);
+    nodes.push(el("span", { class: "ctx" + (pct > 85 ? " hot" : ""),
+      title: `The agent's latest prompt was ${c.tokens.toLocaleString()} tokens; OpenHands summarizes older history to stay under ${c.max.toLocaleString()} (max_input_tokens).` },
+      "context ", el("b", { text: `${fmtN(c.tokens)} of ${fmtN(c.max)}` }), el("span", { class: "gauge" }, el("i", { style: `width:${pct}%` }))));
+  }
+  box.replaceChildren(...nodes);
   box.classList.remove("hidden");
 }
 setInterval(() => { if (S.view === "project" && jobActive()) { renderRunline(); if (job().escalation) $("#esc-since").textContent = `(waiting ${duration(Date.now() / 1000 - job().escalation.since)})`; } }, 1000);
@@ -1535,6 +1556,7 @@ async function pollEvents() {
         S.lastEvent = Math.max(S.lastEvent, ev.id);
         if (S.view === "project" && ev.project === S.current) {
           if (ev.kind === "stream") { liveStream(ev); continue; }
+          if (ev.kind === "context") { S.context = { tokens: ev.tokens, max: ev.max }; renderRunline(); if (S.tab === "stats" && S.stats) renderStats(); continue; }
           if (ev.kind === "chat") {
             addChat(ev, true);
             if (S.tab !== "chat") badge("#n-chat", ++S.unreadChat);

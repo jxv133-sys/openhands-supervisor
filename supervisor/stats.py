@@ -61,6 +61,7 @@ def compute(contract: Contract, records: list[dict]) -> dict:
     has_tokens = False
     prev_ts: float | None = None
     max_context = 0
+    last_context = 0
     current = None  # milestone row of the latest milestone_start (escalations carry only a title)
 
     for rec in records:
@@ -105,6 +106,7 @@ def compute(contract: Contract, records: list[dict]) -> dict:
         if "prompt_tokens" in rec:
             has_tokens = True
         max_context = max(max_context, int(rec.get("context_tokens") or 0))
+        last_context = int(rec.get("context_tokens") or 0) or last_context
 
         totals["turns"] += 1
         totals["actions"] += actions
@@ -160,6 +162,7 @@ def compute(contract: Contract, records: list[dict]) -> dict:
             "prompt_tokens": totals["prompt_tokens"] if has_tokens else None,
             "completion_tokens": totals["completion_tokens"] if has_tokens else None,
             "max_context": max_context or None,
+            "last_context": last_context or None,
             "milestones_done": sum(m.status == "done" for m in contract.milestones),
             "milestones_skipped": sum(m.status == "skipped" for m in contract.milestones),
             "milestones_total": len(contract.milestones),

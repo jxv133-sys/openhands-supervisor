@@ -14,6 +14,7 @@ The supervisor does what you were doing by hand:
 | loops while thinking, repeating the same sentences inside one reply | cuts the reply off within seconds (instead of letting it run to the token limit) and restarts the milestone fresh |
 | loops, or repeats the same failure 3 turns in a row | throws away the conversation and restarts the milestone fresh, with a handoff note |
 | burns a whole turn without changing any file | restarts the milestone |
+| makes a check "pass" by running no tests, or by skipping or deleting tests (Rust/Python) | doesn't accept it: "ran 0 tests" or "skipped/removed tests" counts as a failure, with the reason sent back |
 | still can't do it after 3 restarts | asks you for guidance (type a hint, skip, or quit) |
 
 When the last milestone is done, a **final review** checks the project as a
@@ -25,6 +26,11 @@ whole, again with real commands:
    command for it (build the program, run it, check the output). The supervisor
    runs them. Each failing requirement becomes a new milestone, with that
    command as its check, and the agent works on it like any other.
+   For Rust and Python projects it first runs the whole test suite the way a
+   fresh machine would: `cargo build --release` and the full `cargo test`;
+   for Python, `pytest` in a clean virtualenv with only the dependencies the
+   project declares (catches packages the agent installed by hand but never
+   added to requirements).
 3. This repeats up to `review_rounds` times (default 2); the round after that only
    reports. The result shows in the web UI's *Final review* card, in
    `supervisor status`, and in `.supervisor/review.json`. Requirements no command

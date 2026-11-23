@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from . import progress, review
+from . import progress, review, testguard
 from .chat import LiveStream, chat_record
 from .collector import TurnCollector
 from .config import Settings
@@ -71,6 +71,9 @@ class Supervisor:
         self._loop = RepetitionDetector()
         self._loop_checked = 0.0
         self._looping = ""  # set when the loop guard cut the current reply off
+        # Size of the latest prompt sent to the model: {"tokens", "max"} (web UI)
+        self.context: dict | None = None
+        self._context_thread: threading.Thread | None = None
 
     def request_stop(self) -> None:
         """Ask the run to stop (thread-safe). Pauses the agent mid-turn if one is
@@ -106,6 +109,27 @@ class Supervisor:
             self._loop.reset()
             self.live.end()  # the finished message/tool call replaces the live text
             self.log.chat(record, milestone=self._milestone_n)
+            if kind in ("ActionEvent", "MessageEvent"):  # each follows a model response
+                self._refresh_context()
+
+    def _refresh_context(self) -> None:
+        """Publish how full the model's context is, after each model response.
+        Off the SDK's event thread: reading stats may need a request to the sandbox."""
+        if self._context_thread is not None and self._context_thread.is_alive():
+            return
+
+        def read():
+            time.sleep(0.5)  # let the server's stats update for this response arrive
+            conversation = self._conversation
+            if conversation is None:
+                return
+            tokens = _token_usage(conversation)["context"]
+            if tokens and (self.context or {}).get("tokens") != tokens:
+                self.context = {"tokens": tokens, "max": self.settings.max_input_tokens}
+                self.log.publish("context", milestone=self._milestone_n, **self.context)
+
+        self._context_thread = threading.Thread(target=read, name="context", daemon=True)
+        self._context_thread.start()
 
     def _guard_loop(self, *texts) -> None:
         """Watch the reply being written; cut it off if it loops (see loopguard.py)."""
@@ -135,6 +159,23 @@ class Supervisor:
         if getattr(result, "timeout_occurred", False):
             output += f"\n(command timed out after {timeout}s)"
         return CheckResult(result.exit_code == 0, result.exit_code, output[-8000:])
+
+    def _check(self, workspace, cmd: str, baseline: testguard.TestScan | None = None) -> CheckResult:
+        """Run a check, and only count a pass that really tested something: it
+        must have run at least one test (if it's cargo test / pytest), and, if
+        `baseline` is given, the agent must not have skipped or deleted tests
+        since then (see testguard.py)."""
+        res = self._exec(workspace, cmd, self.settings.check_timeout)
+        if not res.passed or not self.settings.test_guard:
+            return res
+        reason = testguard.zero_tests(res.output)
+        if reason:
+            return CheckResult(False, 1, res.output + testguard.zero_tests_feedback(reason))
+        if baseline is not None:
+            found = testguard.problems(baseline, testguard.scan(self.project_dir))
+            if found:
+                return CheckResult(False, 1, res.output + testguard.problems_feedback(found))
+        return res
 
     def _setup(self, workspace) -> None:
         for cmd in self.contract.setup:
@@ -230,7 +271,7 @@ class Supervisor:
             if m.status != "done":
                 continue
             self._check_stop()
-            res = self._exec(workspace, m.check, s.check_timeout)
+            res = self._check(workspace, m.check)
             self.log.chat({"role": "check", "command": m.check, "passed": res.passed, "exit_code": res.exit_code,
                            "text": res.output[-4000:], "decision": "regression check",
                            "reason": f"milestone {i}: {m.title}", "changed": []})
@@ -246,24 +287,24 @@ class Supervisor:
             self._finish_review(report, may_add)
             return may_add  # fix those first; requirements get reviewed next round
 
-        # 2. Acceptance: one end-to-end command per requirement of the goal.
+        # 2. Acceptance. First the whole test suite the way a fresh machine would
+        #    run it (Rust/Python, see testguard.py), then one end-to-end command
+        #    per requirement of the goal, written by the model.
+        requirements = testguard.suite_checks(self.project_dir) if s.test_guard else []
         try:
             tree, sources = review.gather_sources(self.project_dir, int(s.max_input_tokens * 3 * 0.6))
-            requirements = review.ask_reviewer(
+            requirements += review.ask_reviewer(
                 review.review_prompt(self.contract, tree, sources), s.ollama_url, s.model, s.llm_timeout
             )
-        except Exception as exc:  # model down, bad JSON...: report it, don't fail the run
+        except Exception as exc:  # model down, bad JSON...: report it, still run the suite checks
             report["error"] = f"{type(exc).__name__}: {exc}"[:500]
-            report["verdict"] = "error"
-            self._finish_review(report, may_add)
-            return False
 
         known_checks = {m.check for m in self.contract.milestones}
         for req in requirements:
             self._check_stop()
             entry = {"requirement": req["requirement"], "check": req["check"], "passed": None, "output": ""}
             if req["check"]:
-                res = self._exec(workspace, req["check"], s.check_timeout)
+                res = self._check(workspace, req["check"])
                 entry["passed"], entry["output"] = res.passed, res.output[-2000:]
                 self.log.chat({"role": "check", "command": req["check"], "passed": res.passed, "exit_code": res.exit_code,
                                "text": res.output[-4000:], "decision": "requirement",
@@ -277,7 +318,7 @@ class Supervisor:
             report["requirements"].append(entry)
 
         failed = [r for r in report["requirements"] if r["passed"] is False]
-        report["verdict"] = "fail" if failed else "pass"
+        report["verdict"] = "fail" if failed else "error" if report["error"] else "pass"
         self._finish_review(report, may_add)
         return bool(report["added"])
 
@@ -320,6 +361,8 @@ class Supervisor:
         self.log.say(f"=== Milestone {n}/{total}: {milestone.title}  (check: {milestone.check})")
         self.log.event("milestone_start", n=n, title=milestone.title)
         self._milestone_n = n
+        # The tests as they are now: the agent may add tests, not skip or delete these.
+        baseline = testguard.scan(self.project_dir)
 
         while True:  # one iteration per conversation
             self.log.chat(
@@ -371,7 +414,7 @@ class Supervisor:
                     agent_seconds = time.monotonic() - started
                     tokens = _token_usage(conversation)
                     check_started = time.monotonic()
-                    check = self._exec(workspace, milestone.check, self.settings.check_timeout)
+                    check = self._check(workspace, milestone.check, baseline)
                     check_seconds = time.monotonic() - check_started
                     decision = decide(report, check, milestone.check, state, limits)
                     self.log.chat(
