@@ -443,6 +443,26 @@
   .qa .qq { color: var(--dim); }
   @media (max-width: 1000px) { .newp.withgoal { grid-template-columns: minmax(0, 1fr); } .goalcard { position: static; } .bubble.you { margin-left: 16px; } }
 
+  /* report a problem */
+  .report summary { cursor: pointer; list-style: none; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .report summary::-webkit-details-marker { display: none; }
+  .report summary::before { content: "▸"; color: var(--dim); }
+  .report[open] summary::before { content: "▾"; }
+  .report[open] { border-color: var(--bad-line); }
+  /* delete */
+  button.ghost { background: transparent; border-color: transparent; color: var(--dim); }
+  button.ghost:hover:not(:disabled) { color: var(--bad); border-color: var(--bad-line); background: transparent; }
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-lg); padding: 0; max-width: 480px; width: calc(100% - 32px); }
+  dialog::backdrop { background: color-mix(in oklab, var(--bg) 70%, transparent); backdrop-filter: blur(2px); }
+  .dlg { padding: 20px 22px; }
+  .dlg h3 { margin: 0 0 12px; font-size: 18px; }
+  .choice { display: grid; grid-template-columns: 20px 1fr; gap: 8px; margin: 10px 0; padding: 10px 12px; border: 1px solid var(--line-soft); border-radius: var(--r-md); color: var(--text); font-size: 13.5px; cursor: pointer; }
+  .choice:has(input:checked) { border-color: var(--accent-line); background: var(--accent-bg); }
+  .choice input { margin-top: 3px; }
+  input[type=radio], input[type=checkbox] { width: 15px; height: 15px; padding: 0; border: none; border-radius: 0; background: none; box-shadow: none; accent-color: var(--accent); flex: none; }
+  button.dangerfill { background: var(--bad); border-color: var(--bad); color: #2a0d09; font-weight: 650; }
+  button.dangerfill:hover:not(:disabled) { background: var(--bad); filter: brightness(1.08); border-color: var(--bad); }
+
   /* drafting a milestone */
   .composer { border-style: dashed; border-color: var(--accent-line); background: transparent; }
   .composer textarea { min-height: 60px; }
@@ -492,6 +512,20 @@
   <main id="main"></main>
 </div>
 <div class="toast hidden" id="toast"></div>
+<dialog id="del-dialog">
+  <form method="dialog" class="dlg">
+    <h3>Delete <span id="del-name"></span>?</h3>
+    <label class="choice"><input type="radio" name="del-mode" value="keep" checked>
+      <span><b>Remove from the supervisor, keep the code</b><br><span class="dim">Deletes the plan, logs and stats (the .supervisor folder). The code stays in projects/<span class="del-n"></span>.</span></span></label>
+    <label class="choice"><input type="radio" name="del-mode" value="all">
+      <span><b>Delete the project and its code</b><br><span class="dim">Removes the whole projects/<span class="del-n"></span> folder. This can't be undone.</span></span></label>
+    <div id="del-confirm" class="hidden"><label for="del-typed">Type the project name to confirm</label><input id="del-typed" autocomplete="off"></div>
+    <div class="row" style="margin-top:16px;justify-content:flex-end">
+      <button value="cancel" formnovalidate>Cancel</button>
+      <button class="dangerfill" id="del-go" value="go">Remove from supervisor</button>
+    </div>
+  </form>
+</dialog>
 
 <template id="tpl-welcome">
   <div class="scroll"><div class="welcome">
@@ -549,6 +583,7 @@
         <button id="p-save" disabled title="Save (Ctrl+S)">Save</button>
         <button class="primary" id="p-run">Run</button>
         <button class="danger hidden" id="p-stop">Stop</button>
+        <button class="small ghost" id="p-delete" title="Delete this project">Delete</button>
       </div>
       <div class="rail" id="p-rail"></div>
       <div class="runline hidden" id="p-runline"></div>
@@ -586,6 +621,17 @@
           <span class="dim grow" id="mc-status" style="font-size:12.5px"></span>
         </div>
       </div>
+      <details class="card report" id="p-report">
+        <summary><b>Found a problem while testing?</b> <span class="dim">Report it and the agent fixes it.</span></summary>
+        <label for="br-text">What did you do, and what went wrong?</label>
+        <textarea id="br-text" rows="2" placeholder="e.g. ran todo list in an empty folder and it crashed"></textarea>
+        <label for="br-logs">Error output and logs (paste everything; more is better)</label>
+        <textarea id="br-logs" class="mono" rows="5" placeholder="Run it again with debug logging for more detail, e.g. RUST_LOG=debug ./todo list  or  python -m app --verbose"></textarea>
+        <div class="row" style="margin-top:10px;flex-wrap:wrap">
+          <button class="primary" id="br-send">Create fix milestone</button>
+          <span class="dim grow" id="br-status" style="font-size:12.5px">The fix milestone's check is a new test that reproduces the problem.</span>
+        </div>
+      </details>
     </div>
     <div class="feedwrap">
       <div class="feedhead">
@@ -895,6 +941,8 @@ async function openProject(name, skipConfirm = false) {
   $("#p-stop").onclick = stop;
   $("#p-add").onclick = () => { addMilestone({ title: "", instructions: "", check: "" }, false); };
   $("#mc-draft").onclick = draftMilestone;
+  $("#br-send").onclick = reportProblem;
+  $("#p-delete").onclick = deleteProject;
   $("#mc-text").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); draftMilestone(); } };
   $("#esc-retry").onclick = () => answer("guidance");
   $("#esc-text").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); answer("guidance"); } };
@@ -1380,6 +1428,48 @@ async function draftMilestone() {
   } catch (e) { toast(e.message); status.textContent = ""; }
   finally { if ($("#mc-draft")) $("#mc-draft").disabled = jobHere(); }
 }
+// A bug found while test-running the program -> a fix milestone whose check is a
+// regression test reproducing it. The user's report and logs go into its instructions.
+async function reportProblem() {
+  const report = $("#br-text").value.trim(), logs = $("#br-logs").value;
+  if (!report && !logs.trim()) { $("#br-text").focus(); return toast("Describe the problem or paste the error output first."); }
+  const btn = $("#br-send"), status = $("#br-status"), name = S.current, before = status.textContent;
+  btn.disabled = true;
+  status.replaceChildren(anim("plan"), " ", el("span", { class: "shimmer", text: `Drafting a fix with ${S.state.model}...` }));
+  try {
+    const m = await askDraft({ report, logs });
+    if (S.current !== name || S.view !== "project") return;
+    $("#br-text").value = ""; $("#br-logs").value = ""; $("#p-report").open = false;
+    addMilestone(m, true);
+    toast("Fix milestone added. Check it, Save, then Run.", "ok");
+  } catch (e) { toast(e.message); }
+  finally { if ($("#br-send")) { $("#br-send").disabled = jobHere(); $("#br-status").textContent = before; } }
+}
+
+function deleteProject() {
+  const name = S.current, dlg = $("#del-dialog");
+  $("#del-name").textContent = name; document.querySelectorAll(".del-n").forEach(n => n.textContent = name);
+  const sync = () => {
+    const all = dlg.querySelector("input[name=del-mode]:checked").value === "all";
+    $("#del-confirm").classList.toggle("hidden", !all);
+    $("#del-go").textContent = all ? "Delete project and code" : "Remove from supervisor";
+    $("#del-go").disabled = all && $("#del-typed").value.trim() !== name;
+  };
+  dlg.querySelectorAll("input[name=del-mode]").forEach(r => r.onchange = sync);
+  dlg.querySelector("input[value=keep]").checked = true; $("#del-typed").value = ""; $("#del-typed").oninput = sync; sync();
+  dlg.onclose = async () => {
+    if (dlg.returnValue !== "go") return;
+    const all = dlg.querySelector("input[name=del-mode]:checked").value === "all";
+    try {
+      await api("DELETE", `/api/projects/${encodeURIComponent(name)}?keep_code=${all ? 0 : 1}`);
+      S.dirty = false;
+      toast(all ? `Deleted ${name} and its code.` : `Removed ${name} from the supervisor; the code is still in projects/${name}.`, "ok");
+      await refreshState(); openWelcome();
+    } catch (e) { toast(e.message); }
+  };
+  dlg.showModal();
+}
+
 // Fill in the check command (and anything else left empty) for a milestone you wrote.
 async function suggestCheck(i, btn) {
   const m = S.draft.milestones[i];
@@ -1459,6 +1549,7 @@ function renderMilestones() {
   $("#ms-count").textContent = `${ms.length} milestone${ms.length === 1 ? "" : "s"} · ${ms.filter(m => m.status === "done").length} done` +
     (ms.some(m => m.status === "skipped") ? ` · ${ms.filter(m => m.status === "skipped").length} skipped` : "");
   $("#p-add").disabled = locked; $("#mc-draft").disabled = locked; $("#mc-text").disabled = locked;
+  $("#br-send").disabled = locked; $("#p-delete").disabled = locked;
   renderRail();
   $("#p-goal").disabled = locked; $("#p-setup").disabled = locked;
 }
@@ -1701,6 +1792,7 @@ async function pollEvents() {
       for (const ev of events) {
         S.lastEvent = Math.max(S.lastEvent, ev.id);
         if (S.view === "project" && ev.project === S.current) {
+          if (ev.kind === "contract" && ev.deleted) { S.dirty = false; toast(`${ev.project} was deleted.`, "ok"); openWelcome(); refresh = true; continue; }
           if (ev.kind === "stream") { liveStream(ev); continue; }
           if (ev.kind === "context") { S.context = { tokens: ev.tokens, max: ev.max }; renderRunline(); if (S.tab === "stats" && S.stats) renderStats(); continue; }
           if (ev.kind === "chat") {

@@ -12,6 +12,7 @@ import json
 import os
 import queue
 import re
+import shutil
 import threading
 import time
 import traceback
@@ -22,7 +23,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from .config import Settings
-from .contract import DONE, PENDING, SKIPPED, Contract
+from .contract import DONE, PENDING, SKIPPED, STATE_DIR, Contract
 from .log import RunLog
 from .review import load_report
 
@@ -324,7 +325,9 @@ class App:
         description = str(data.get("description", "")).strip()
         title = str(data.get("title", "")).strip()
         instructions = str(data.get("instructions", "")).strip()
-        if not (description or title or instructions):
+        report = str(data.get("report", "")).strip()
+        logs = str(data.get("logs", ""))[-200_000:]
+        if not (description or title or instructions or report or logs.strip()):
             raise ApiError(HTTPStatus.BAD_REQUEST, "describe what the milestone should do")
         try:
             contract = Contract.from_dict(data["contract"]) if data.get("contract") else Contract.load(path)
@@ -333,9 +336,34 @@ class App:
         try:
             return draft_milestone(contract, description, file_tree(path), self.settings.ollama_url,
                                    self.settings.model, title=title, instructions=instructions,
-                                   timeout=self.settings.llm_timeout)
+                                   timeout=self.settings.llm_timeout, report=report, logs=logs)
         except Exception as exc:
             raise ApiError(HTTPStatus.BAD_GATEWAY, f"drafting failed: {exc}") from exc
+
+    def delete(self, name: str, keep_code: bool) -> dict:
+        """Remove a project from the supervisor (its .supervisor folder), or,
+        unless keep_code, the whole project folder with its code."""
+        path = self._require_contract(name)
+        with self._lock:
+            if self._active_job_for(name):
+                raise ApiError(HTTPStatus.CONFLICT, "stop the run before deleting the project")
+            if name in self._planning:
+                raise ApiError(HTTPStatus.CONFLICT, "wait for planning to finish")
+            # Never follow a symlink out of the projects folder.
+            if path.is_symlink() or path.resolve().parent != self.root:
+                raise ApiError(HTTPStatus.BAD_REQUEST, "refusing to delete outside the projects folder")
+            target = path / STATE_DIR if keep_code else path
+            failed: list[str] = []
+            shutil.rmtree(target, onexc=lambda fn, p, exc: failed.append(p))
+            if self.job is not None and self.job.project == name:
+                self.job = None  # its finished/stopped status refers to a project that's gone
+        if failed:
+            # Usually files the sandbox created as another user. Say exactly what's left.
+            raise ApiError(HTTPStatus.INTERNAL_SERVER_ERROR,
+                           f"deleted all but {len(failed)} file(s) it may not remove, e.g. {failed[0]}. "
+                           f"Remove them on the server, e.g. sudo rm -rf '{target}'")
+        self.bus.publish({"kind": "contract", "project": name, "deleted": True})
+        return {"deleted": name, "kept_code": keep_code}
 
     def stats(self, name: str) -> dict:
         from . import stats
@@ -523,6 +551,9 @@ def make_handler(app: App, token: str | None):
                     body = self._body()
                     return self._json(HTTPStatus.CREATED, app.create(str(body.get("name", "")), str(body.get("goal", ""))))
                 if len(route) == 2 and route[0] == "projects":
+                    if method == "DELETE":
+                        keep = (parse_qs(url.query).get("keep_code") or ["0"])[0] == "1"
+                        return self._json(HTTPStatus.OK, app.delete(route[1], keep))
                     if method == "GET":
                         return self._json(HTTPStatus.OK, app.project(route[1]))
                     if method == "PUT":
@@ -560,6 +591,9 @@ def make_handler(app: App, token: str | None):
 
         def do_PUT(self):
             self._dispatch("PUT")
+
+        def do_DELETE(self):
+            self._dispatch("DELETE")
 
     return Handler
 

@@ -59,13 +59,22 @@ CHECK_RULES = """Rules for checks (they are run after EVERY step, many times, in
   not just that the code runs.
 """
 
+LOGGING_RULES = """The program must be easy to debug when the user test-runs it later:
+- Debug logging of important steps and of every error, off by default. Rust: the `log` crate
+  with `env_logger` (enabled by `RUST_LOG=debug`), plus a `--verbose` flag if it's a CLI.
+  Python: the `logging` module, enabled by `--verbose` or `LOG_LEVEL=DEBUG`. Logs go to stderr.
+- Error messages say what failed and with which input or file, never just "error".
+- README.md says how to build, run, and turn on debug logging.
+"""
+
 PLANNER_PROMPT = """You plan software projects for a coding agent that works in a Linux (Debian) sandbox.
 Break the goal below into 3 to 8 small, sequential milestones. Each milestone must:
 - be small enough to finish by editing a few files,
 - build on the previous ones,
 - have a "check": ONE shell command, run from the project root, that exits with code 0
   only when the milestone is truly done.
-{check_rules}Also list "setup": shell commands that install the language toolchain the project
+{check_rules}{logging_rules}Put setting up logging in the first milestone, and make the last milestone write README.md.
+Also list "setup": shell commands that install the language toolchain the project
 needs, written so they are safe to run again (e.g. for Rust:
 `command -v cargo || (curl -sSf https://sh.rustup.rs | sh -s -- -y)`). Empty list if none needed.
 Instructions should say WHAT to build, concretely, in 1-4 sentences. No code.
@@ -107,7 +116,7 @@ def plan(goal: str, ollama_url: str, model: str, timeout: float = 900) -> Contra
             "think": False,
             "format": PLAN_SCHEMA,
             "options": {"temperature": 0.3},
-            "messages": [{"role": "user", "content": PLANNER_PROMPT.format(goal=goal, check_rules=CHECK_RULES)}],
+            "messages": [{"role": "user", "content": PLANNER_PROMPT.format(goal=goal, check_rules=CHECK_RULES, logging_rules=LOGGING_RULES)}],
         },
         timeout,
     )
@@ -148,15 +157,39 @@ Project files:
 Reply with JSON only."""
 
 
+BUG_REQUEST = """The user test-ran the program and found a problem. Write ONE milestone that fixes it.
+Its instructions must tell the agent to FIRST write a regression test that reproduces exactly
+this problem (named like `test_regression_<short_name>`; Rust: run the real binary if the bug is
+in command-line behaviour), confirm it fails, THEN fix the code, and to add debug logging around
+the failing code path if the logs below don't explain the cause. The check runs that regression
+test. Title starts with "Fix:".
+
+What the user did and what happened:
+{report}
+
+Error output / logs from their run (may be cut):
+```
+{logs}
+```"""
+
+LOG_EXCERPT = 4000  # chars of the user's logs that go into the milestone itself
+
+
 def draft_milestone(contract: Contract, description: str, tree: str, ollama_url: str, model: str,
-                    title: str = "", instructions: str = "", timeout: float = 900) -> dict:
+                    title: str = "", instructions: str = "", timeout: float = 900,
+                    report: str = "", logs: str = "") -> dict:
     """One new milestone (title, instructions, check) from a plain-language
     description. If the user already wrote a title/instructions, keep those and
-    only fill in what's missing (typically the check command)."""
+    only fill in what's missing (typically the check command). With `report`/
+    `logs` (a bug found while test-running the program), drafts a fix milestone
+    whose check is a regression test reproducing the bug."""
     milestones = "\n".join(
         f"{i}. [{m.status}] {m.title} (check: {m.check})" for i, m in enumerate(contract.milestones, 1)
     ) or "(none)"
-    if title or instructions:
+    report, logs = report.strip(), logs.strip()
+    if report or logs:
+        request = BUG_REQUEST.format(report=report or "(see the logs)", logs=_tail(logs, 6000) or "(none pasted)")
+    elif title or instructions:
         request = (
             "The user already started this milestone. Keep their intent; improve wording only if unclear.\n"
             f"Title: {title or '(none)'}\nInstructions: {instructions or '(none)'}"
@@ -178,7 +211,19 @@ def draft_milestone(contract: Contract, description: str, tree: str, ollama_url:
         },
         timeout,
     )
-    return parse_milestone(response["message"]["content"])
+    out = parse_milestone(response["message"]["content"])
+    if report or logs:
+        # The agent must see what the user saw, whatever the model wrote.
+        if not out["title"].lower().startswith("fix"):
+            out["title"] = f"Fix: {out['title']}"
+        out["instructions"] += "\n\nThe user's bug report: " + (report or "(no description)")
+        if logs:
+            out["instructions"] += f"\nError output / logs from their test run:\n```\n{_tail(logs, LOG_EXCERPT)}\n```"
+    return out
+
+
+def _tail(text: str, limit: int) -> str:
+    return text if len(text) <= limit else "...(cut)...\n" + text[-limit:]
 
 
 def parse_milestone(text: str) -> dict:
@@ -230,7 +275,8 @@ Each time, return:
   summary, then short sections or bullets for: language and how it's run (CLI with exact
   commands, library API, service...), each feature with its exact inputs and outputs, where
   data is stored and in what format, error behaviour (bad input, missing files...), and what
-  is out of scope. Use the user's answers exactly. Where something is still unknown, choose a
+  is out of scope, and how to turn on debug logging (e.g. `RUST_LOG=debug` / `--verbose`)
+  so problems found when testing can be diagnosed. Use the user's answers exactly. Where something is still unknown, choose a
   sensible, simple default and say so in the goal (e.g. "Data: todos.json in the current
   directory (assumed)"). No code.
 - "questions": at most 4 questions whose answers would really change what gets built, most

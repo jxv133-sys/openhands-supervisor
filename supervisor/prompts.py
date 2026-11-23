@@ -38,6 +38,8 @@ def milestone_prompt(contract: Contract, milestone: Milestone, handoff: str = ""
         "The supervisor checks for this and will not accept it.\n"
         "- Declare every dependency (Cargo.toml, pyproject.toml or requirements.txt). The project must work "
         "on a fresh machine, not only in this sandbox.\n"
+        "- Log important steps and every error at debug level (Rust: log/env_logger, RUST_LOG=debug; "
+        "Python: logging). Error messages say what failed and with which input.\n"
         "- When the check command passes, call the finish tool with a one-line summary."
     )
     if handoff:

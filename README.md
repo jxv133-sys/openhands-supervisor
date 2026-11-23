@@ -94,6 +94,15 @@ Then open **http://<that-machine>:8765** in a browser.
   log timestamps.
 - **When the agent needs help**, a card shows why, what the agent said, and the
   check's output. Type a hint and *Retry with guidance*, or *Skip* / *Stop*.
+- **Test it yourself.** Every program is built with debug logging (Rust:
+  `RUST_LOG=debug`, Python: `--verbose` / `LOG_LEVEL=DEBUG`; its README says
+  how). If something breaks, open *Found a problem while testing?* on the
+  project, describe what you did and paste the error output and logs. The
+  supervisor drafts a fix milestone: the agent first writes a regression test
+  that reproduces the problem (that test is the check), then fixes the code.
+  *Save*, *Run*.
+- **Delete** a project from its toolbar: either remove it from the supervisor
+  and keep the code, or delete the folder with the code (type the name to confirm).
 - **Stop** any time; progress is saved, *Run* resumes. Runs keep going when you
   close the tab; one run at a time (one GPU).
 - The browser tab title shows `⚠ <project> needs help` when the agent is waiting

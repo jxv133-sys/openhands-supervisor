@@ -115,3 +115,23 @@ def test_goal_round_parsing_and_prompt(monkeypatch):
                         "my edited goal", "http://x", "m")
     p = sent["prompt"]
     assert "a todo app" in p and "A: Rust" in p and "skipped" in p and "my edited goal" in p
+
+
+def test_bug_report_drafts_a_regression_fix(monkeypatch):
+    from supervisor import planner
+
+    sent = {}
+
+    def fake_post(url, payload, timeout):
+        sent["prompt"] = payload["messages"][0]["content"]
+        return {"message": {"content": '{"title": "Handle missing todos.json", "instructions": "Write test_regression_missing_file, then fix.", "check": "cargo test test_regression_missing_file"}'}}
+
+    monkeypatch.setattr(planner, "_post_json", fake_post)
+    logs = "x" * 10000 + "\nthread 'main' panicked at src/storage.rs:12:40: No such file or directory"
+    out = planner.draft_milestone(Contract.from_dict(RAW), "", "src/main.rs", "http://x", "m",
+                                  report="ran `todo list` in an empty folder, it crashed", logs=logs)
+    assert out["title"].startswith("Fix:")
+    assert "it crashed" in out["instructions"] and "src/storage.rs:12:40" in out["instructions"]
+    assert len(out["instructions"]) < 6000  # logs are cut to their tail
+    p = sent["prompt"]
+    assert "regression test" in p and "src/storage.rs:12:40" in p and "it crashed" in p

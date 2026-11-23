@@ -127,3 +127,39 @@ def test_run_end_message_counts_skipped(tmp_path, monkeypatch):
     job.thread.join(5)
     assert job.status == "finished"
     assert "1 skipped" in job.message
+
+
+def test_delete_keep_code_removes_only_supervisor_state(tmp_path):
+    app = App(Settings(), tmp_path)
+    name = _project(tmp_path)
+    (tmp_path / name / "main.rs").write_text("fn main() {}")
+    app.delete(name, keep_code=True)
+    assert (tmp_path / name / "main.rs").exists()
+    assert not (tmp_path / name / ".supervisor").exists()
+    assert [p["name"] for p in app.state()["projects"]] == []
+
+
+def test_delete_everything(tmp_path):
+    app = App(Settings(), tmp_path)
+    name = _project(tmp_path)
+    (tmp_path / name / "src").mkdir()
+    (tmp_path / name / "src" / "main.rs").write_text("fn main() {}")
+    app.delete(name, keep_code=False)
+    assert not (tmp_path / name).exists()
+    with pytest.raises(ApiError):
+        app.delete(name, keep_code=False)  # already gone
+
+
+def test_delete_refuses_running_project_and_symlinks(tmp_path, monkeypatch):
+    app = App(Settings(), tmp_path / "projects")
+    name = _project(app.root)
+    monkeypatch.setattr(app, "_active_job_for", lambda n: True)
+    with pytest.raises(ApiError, match="stop the run"):
+        app.delete(name, keep_code=False)
+    monkeypatch.undo()
+    outside = tmp_path / "elsewhere"
+    _project(tmp_path, "elsewhere")
+    (app.root / "link").symlink_to(outside, target_is_directory=True)
+    with pytest.raises(ApiError, match="outside"):
+        app.delete("link", keep_code=False)
+    assert (outside / ".supervisor").exists()  # the link's target is untouched
