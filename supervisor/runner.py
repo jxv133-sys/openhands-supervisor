@@ -15,7 +15,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from . import progress, review
-from .chat import chat_record
+from .chat import LiveStream, chat_record
 from .collector import TurnCollector
 from .config import Settings
 from .contract import DONE, SKIPPED, Contract, Milestone
@@ -65,6 +65,8 @@ class Supervisor:
         self._stop = threading.Event()
         self._conversation = None
         self._milestone_n = 0  # tags chat records with the milestone they belong to
+        # The model's output while it's still being generated (web UI only).
+        self.live = LiveStream(lambda **rec: self.log.publish("stream", milestone=self._milestone_n, **rec))
 
     def request_stop(self) -> None:
         """Ask the run to stop (thread-safe). Pauses the agent mid-turn if one is
@@ -82,8 +84,12 @@ class Supervisor:
             raise Quit()
 
     def _activity(self, kind: str, event) -> None:
+        if kind == "StreamingDeltaEvent":  # one token or so of the reply being written
+            self.live.delta(getattr(event, "content", None), getattr(event, "reasoning_content", None))
+            return
         record = chat_record(event)
         if record:
+            self.live.end()  # the finished message/tool call replaces the live text
             self.log.chat(record, milestone=self._milestone_n)
 
     # --- sandbox helpers ------------------------------------------------
@@ -125,6 +131,7 @@ class Supervisor:
             max_output_tokens=s.max_output_tokens,
             temperature=s.temperature,
             timeout=s.llm_timeout,
+            stream=s.stream,  # token deltas for the live view in the web UI's chat
         )
         agent = get_default_agent(llm=llm, cli_mode=True)
 
@@ -313,6 +320,7 @@ class Supervisor:
                     except Exception as exc:
                         exception = f"{type(exc).__name__}: {exc}"
                     collector.wait_until_quiet()
+                    self.live.end()
                     self._check_stop()
                     status = _status_of(conversation)
                     changed = progress.changed_files(before, progress.snapshot(self.project_dir))

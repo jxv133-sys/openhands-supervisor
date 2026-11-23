@@ -61,7 +61,11 @@ Then open **http://<that-machine>:8765** in a browser.
   milestone back to `pending` to redo it. *Save*.
 - **Run**: watch it live on the right: each turn's outcome (actions, files
   changed, check passed/failed, and what the supervisor decided), plus the
-  agent's individual steps.
+  agent's individual steps. The *Chat* tab shows the agent's reply **as the
+  model writes it**, token by token (tick *thinking* to watch its reasoning
+  too), and a status line says what it's doing right now ("Running $ cargo
+  build... 42s"). Set `stream = false` in `supervisor.toml` if your Ollama
+  version has trouble streaming with tool calls.
 - **Stats** tab: working time, turns, agent actions, check pass rate, restarts,
   how often it needed you, files changed, tokens in/out and peak context size
   (vs `max_input_tokens`); a turn-by-turn timeline (hover a bar for details); a

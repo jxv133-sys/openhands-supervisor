@@ -123,3 +123,95 @@ def chat_record(event) -> dict | None:
             text += f"\n\n{_cut(str(summary), 3000)}"
         return {"role": "system", "level": "info", "text": text}
     return None
+
+
+class LiveStream:
+    """Batches the model's streamed tokens into a few updates per second.
+
+    Deltas arrive one token at a time (dozens a second). They're grouped into
+    one live message from the first delta until `end()` (called when the next
+    real event, e.g. the finished message or tool call, replaces it). Each
+    flush publishes only the newly arrived text, numbered with `seq`, so a
+    page that joins mid-stream can take `snapshot()` and then apply later
+    updates. Nothing here is saved to disk: the finished event is.
+    """
+
+    def __init__(self, publish, interval: float = 0.35):
+        import threading
+
+        self._publish = publish  # publish(**record): sends a transient "stream" record
+        self._interval = interval
+        self._lock = threading.Lock()
+        self._timer = None
+        # Keeps counting across messages, so a late update from an earlier
+        # message can never be mistaken for one of the current message.
+        self.seq = 0
+        self._reset()
+
+    def _reset(self) -> None:
+        self.active = False
+        self.text = ""
+        self.thinking = ""
+        self._pending_text = ""
+        self._pending_thinking = ""
+        self._last_flush = 0.0
+
+    def delta(self, content: str | None, reasoning: str | None) -> None:
+        import time
+
+        if not content and not reasoning:
+            return
+        with self._lock:
+            self.active = True
+            self.text += content or ""
+            self.thinking += reasoning or ""
+            self._pending_text += content or ""
+            self._pending_thinking += reasoning or ""
+            if time.monotonic() - self._last_flush >= self._interval:
+                self._flush_locked()
+            elif self._timer is None:  # flush the tail even if no more tokens come soon
+                import threading
+
+                self._timer = threading.Timer(self._interval, self._flush_timer)
+                self._timer.daemon = True
+                self._timer.start()
+
+    def _flush_timer(self) -> None:
+        with self._lock:
+            self._timer = None
+            if self.active:
+                self._flush_locked()
+
+    def _flush_locked(self) -> None:
+        import time
+
+        if not self._pending_text and not self._pending_thinking:
+            return
+        self.seq += 1
+        record = {"seq": self.seq, "text": self._pending_text, "thinking": self._pending_thinking}
+        self._pending_text = self._pending_thinking = ""
+        self._last_flush = time.monotonic()
+        self._publish(**record)
+
+    def end(self) -> None:
+        """The streamed message is complete (its final event comes next)."""
+        with self._lock:
+            if self._timer is not None:
+                self._timer.cancel()
+                self._timer = None
+            if not self.active:
+                return
+            self._flush_locked()
+            self.seq += 1
+            self._publish(seq=self.seq, end=True)
+            self._reset()
+
+    def snapshot(self) -> dict | None:
+        with self._lock:
+            if not self.active:
+                return None
+            # Only what was already published up to `seq`; the unflushed tail
+            # arrives in the next update (seq + 1), so nothing is shown twice.
+            text = self.text[: len(self.text) - len(self._pending_text)]
+            thinking = self.thinking[: len(self.thinking) - len(self._pending_thinking)]
+            return {"seq": self.seq, "text": text, "thinking": thinking}

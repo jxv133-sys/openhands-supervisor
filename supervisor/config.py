@@ -20,6 +20,8 @@ class Settings:
     max_output_tokens: int = 8000
     temperature: float = 0.7
     llm_timeout: int = 900
+    # Stream the model's output token by token, so the web UI can show it live.
+    stream: bool = True
     # Sandbox
     server_image: str = "ghcr.io/openhands/agent-server:latest-python"
     iterations_per_turn: int = 40

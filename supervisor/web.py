@@ -214,6 +214,13 @@ class App:
     def _active_job_for(self, name: str) -> bool:
         return self.job is not None and self.job.project == name and self.job.to_dict()["active"]
 
+    def _live(self, name: str) -> dict | None:
+        """What the agent is writing right now, for a page that opens mid-reply."""
+        if not self._active_job_for(name) or self.job.supervisor is None:
+            return None
+        live = getattr(self.job.supervisor, "live", None)
+        return live.snapshot() if live is not None else None
+
     def default_goal(self) -> str:
         if self.goal_file is None:
             return ""
@@ -262,6 +269,7 @@ class App:
             "log": run_log.read_all()[-400:],
             "chat": run_log.read_chat(600),
             "review": load_report(path),
+            "live": self._live(name),
             "final_review": self.settings.final_review,
             "running": self._active_job_for(name),
         }

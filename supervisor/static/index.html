@@ -218,6 +218,20 @@
   .rq details { grid-column: 2; padding: 0; }
   .rq details pre { max-height: 200px; }
   .ms .stag.review { color: var(--purple); border-color: #4a3566; }
+
+  /* live: the reply being written, and what the agent is doing right now */
+  #live { padding: 0 20px 40px; }
+  .msg.live { border-style: dashed; border-color: var(--accent); }
+  .msg.live > .who .state { color: var(--dim); font-weight: 400; text-transform: none; }
+  .msg.live .body::after { content: "▍"; color: var(--accent); animation: blink 1s steps(2) infinite; margin-left: 1px; }
+  .msg.live .lthink { margin: 2px 10px 4px; padding: 6px 8px; border-left: 2px solid var(--border); color: var(--dim);
+    font-size: 12.5px; white-space: pre-wrap; word-break: break-word; max-height: 12em; overflow: auto; }
+  .msg.live .lthink.collapsed { max-height: none; overflow: visible; border: none; padding: 0 0 0 10px; font-style: italic; }
+  @keyframes blink { to { visibility: hidden; } }
+  .livestatus { display: flex; gap: 8px; align-items: center; color: var(--dim); font-size: 12.5px; margin: 10px 0 0; }
+  .livestatus .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .livestatus .el { font-family: var(--mono); font-size: 11.5px; margin-left: auto; flex: none; }
+  #chat { padding-bottom: 8px; }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
     border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -340,7 +354,7 @@
         <label id="opt-follow"><input type="checkbox" id="f-follow" checked> follow</label>
         <label id="opt-changed" class="hidden"><input type="checkbox" id="f-changed"> changed only</label>
       </div>
-      <div class="pane" id="pane-chat"><div id="chat"></div></div>
+      <div class="pane" id="pane-chat"><div id="chat"></div><div id="live"></div></div>
       <div class="pane hidden" id="pane-activity"><div id="feed"></div></div>
       <div class="pane hidden" id="pane-stats"><div id="stats"></div></div>
       <button class="jump hidden" id="jump">↓ Latest</button>
@@ -539,6 +553,7 @@ async function openProject(name, skipConfirm = false) {
   $("#f-thinking").onchange = () => {
     localStorage.setItem("showThinking", $("#f-thinking").checked ? "1" : "0");
     document.querySelectorAll("#chat .thinking").forEach(n => n.classList.toggle("hidden", !$("#f-thinking").checked));
+    if (S.live) renderLive();
   };
   $("#f-changed").onchange = renderFileList;
   document.querySelectorAll(".tab").forEach(b => b.onclick = () => switchTab(b.dataset.tab));
@@ -548,8 +563,12 @@ async function openProject(name, skipConfirm = false) {
   // history from disk, then live events continue appending
   $("#feed").replaceChildren(); S.feedCount = 0;
   for (const rec of S.project.log) addFeed(rec);
-  $("#chat").replaceChildren(); S.calls = new Map(); S.chatCount = 0;
+  $("#chat").replaceChildren(); $("#live").replaceChildren(); S.calls = new Map(); S.chatCount = 0;
+  S.live = null; S.lastRole = null; S.lastSummary = null; S.phase = null; S.lastActivityAt = null;
   for (const rec of S.project.chat) addChat(rec);
+  S.lastActivityAt = Date.now();
+  if (S.project.live) { startLive(S.project.live); renderLive(); }
+  renderLiveStatus();
   if (!S.project.chat.length) $("#chat").append(el("div", { class: "dim", style: "margin-top:20px", text: "The agent's conversation shows up here once a run starts." }));
   S.files = null; S.openFile = null; S.stats = null;
   switchTab(localStorage.getItem("tab") || "chat");
@@ -607,8 +626,13 @@ function callArgsBlock(r) {
     return el("details", {}, el("summary", { text: "arguments" }), el("pre", { class: "mono", text: JSON.stringify(rest, null, 2) }));
   return null;
 }
-function addChat(r) {
+function addChat(r, isLive) {
   const chat = $("#chat"); if (!chat) return;
+  // What the agent is doing now, for the live status line.
+  S.lastRole = r.role === "system" && r.level !== "divider" ? S.lastRole : r.role;
+  if (r.role === "tool_call") S.lastSummary = r.summary;
+  if (r.role === "system" && r.level === "divider") S.phase = /^Final review/.test(r.text) ? "review" : "milestone";
+  S.lastActivityAt = isLive ? Date.now() : (S.lastActivityAt || Date.now());
   if (S.chatCount === 0) chat.replaceChildren();
   const t = time(r.ts); let node = null;
   switch (r.role) {
@@ -656,6 +680,72 @@ function addChat(r) {
   chat.append(node);
   if (++S.chatCount > 1500) { chat.firstChild.remove(); S.chatCount--; }
 }
+
+// ---------- live output ----------
+// The reply the model is writing right now, updated a few times a second from
+// "stream" events. Removed when the finished message/tool call arrives.
+function liveStream(ev) {
+  if (ev.end) { if (!S.live || ev.seq > S.live.seq) dropLive(); return; }
+  if (S.live && ev.seq <= S.live.seq) return;  // already in the snapshot we started from
+  if (!S.live) startLive({ seq: 0, text: "", thinking: "" });
+  S.live.seq = ev.seq;
+  S.live.text += ev.text || ""; S.live.thinking += ev.thinking || "";
+  S.lastActivityAt = Date.now();
+  renderLive();
+}
+function startLive(snap) {
+  S.live = { seq: snap.seq, text: snap.text || "", thinking: snap.thinking || "", startedAt: Date.now(), node: null };
+}
+function dropLive() {
+  if (S.live && S.live.node) S.live.node.remove();
+  S.live = null; renderLiveStatus();
+}
+function renderLive() {
+  const box = $("#live"); if (!box || !S.live) return;
+  const L = S.live;
+  if (!L.node || !L.node.isConnected) {
+    L.body = el("div", { class: "body" });
+    L.think = el("div", { class: "lthink" });
+    L.state = el("span", { class: "state" });
+    L.node = el("div", { class: "msg agent live" }, el("div", { class: "who" }, "Agent", L.state), L.think, L.body);
+    box.prepend(L.node);
+  }
+  const showThinking = $("#f-thinking").checked;
+  L.think.classList.toggle("hidden", !L.thinking);
+  L.think.classList.toggle("collapsed", !showThinking);
+  if (showThinking) { L.think.textContent = L.thinking; L.think.scrollTop = L.think.scrollHeight; }
+  else L.think.textContent = `thinking... (${L.thinking.trim().split(/\s+/).length} words; tick "thinking" to watch)`;
+  L.body.textContent = L.text;
+  L.body.classList.toggle("hidden", !L.text && !!L.thinking);
+  L.state.textContent = `${L.text ? "writing" : "thinking"} · ${duration((Date.now() - L.startedAt) / 1000)}`;
+  renderLiveStatus();
+  scrollFeed(false);
+}
+// One line under the chat: what's happening right now, and for how long.
+function renderLiveStatus() {
+  const box = $("#live"); if (!box) return;
+  let line = $("#livestatus");
+  const j = job();
+  let label = null;
+  if (jobHere() && !j.escalation) {
+    if (j.status === "starting") label = "Starting the sandbox...";
+    else if (j.status === "stopping") label = "Stopping...";
+    else if (S.live) label = null;  // the live bubble says it
+    else if (S.phase === "review" && S.lastRole !== "tool_call") label = "Final review: running checks...";
+    else if (S.lastRole === "tool_call") label = `Running ${S.lastSummary || "a tool"}...`;
+    else if (S.lastRole === "check") label = "Supervisor is deciding what's next...";
+    else label = "Agent is thinking...";
+  }
+  if (!label) { if (line) line.remove(); return; }
+  if (!line) {
+    line = el("div", { class: "livestatus", id: "livestatus" }, el("span", { class: "spinner" }), el("span", { class: "lbl" }), el("span", { class: "el" }));
+    box.append(line);
+  }
+  line.querySelector(".lbl").textContent = label;
+  line.querySelector(".lbl").title = label;
+  line.querySelector(".el").textContent = S.lastActivityAt ? duration((Date.now() - S.lastActivityAt) / 1000) : "";
+}
+setInterval(() => { if (S.view === "project" && S.tab === "chat") { if (S.live) renderLive(); else renderLiveStatus(); } }, 1000);
 
 // ---------- files ----------
 async function loadFiles() {
@@ -940,6 +1030,8 @@ function renderProjectChrome() {
   $("#p-save").disabled = !S.dirty || here;
   renderRunline();
   renderReview();
+  if (!jobHere() && S.live) dropLive();
+  renderLiveStatus();
   // nothing left to do: Run does just the final review
   const allDone = S.draft && !S.draft.milestones.some(m => m.status === "pending");
   $("#p-run").textContent = allDone && S.project && S.project.final_review ? "Run final review" : "Run";
@@ -1145,10 +1237,12 @@ async function pollEvents() {
       for (const ev of events) {
         S.lastEvent = Math.max(S.lastEvent, ev.id);
         if (S.view === "project" && ev.project === S.current) {
+          if (ev.kind === "stream") { liveStream(ev); continue; }
           if (ev.kind === "chat") {
-            addChat(ev);
+            addChat(ev, true);
             if (S.tab !== "chat") badge("#n-chat", ++S.unreadChat);
             if (ev.role === "tool_result" || ev.role === "check") files = true;
+            renderLiveStatus();
           } else addFeed(ev);
         }
         if (["job", "planning", "contract", "turn", "milestone_start", "skip", "guidance", "review"].includes(ev.kind)) refresh = true;
