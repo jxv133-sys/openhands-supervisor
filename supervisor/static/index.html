@@ -4,23 +4,38 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenHands Supervisor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Falls back to system fonts when offline. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
+  /* "Spruce & lilac": a night-shift foreman's console. Spruce greens for the
+     room, bone for text, lilac for your actions and the supervisor's voice,
+     sky for the agent's voice; mint / coral / gold only ever mean
+     passed / failed / needs you. */
   :root {
-    --bg: #0f1115; --panel: #171a21; --panel2: #1d212a; --border: #2a2f3a;
-    --text: #e6e8ee; --dim: #8b93a5; --accent: #7c9cff; --accent2: #5b7cf0;
-    --ok: #3ecf8e; --warn: #f5b342; --bad: #ff6b6b; --purple: #c792ea;
-    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --bg: #0e1b1d; --panel: #132427; --panel2: #183034; --border: #24403f; --line-soft: #1b3235;
+    --text: #ece8dc; --dim: #8fa7a2; --faint: #557370;
+    --accent: #b7a6ff; --accent2: #9d8af5; --on-accent: #17122e; --sky: #7cc4f2;
+    --ok: #5ed3a1; --warn: #f2c14e; --bad: #ff7b6c; --purple: var(--accent);
+    --ok-line: color-mix(in oklab, var(--ok) 38%, var(--panel)); --bad-line: color-mix(in oklab, var(--bad) 40%, var(--panel));
+    --warn-line: color-mix(in oklab, var(--warn) 40%, var(--panel)); --accent-line: color-mix(in oklab, var(--accent) 38%, var(--panel));
+    --sky-line: color-mix(in oklab, var(--sky) 34%, var(--panel));
+    --ok-bg: color-mix(in oklab, var(--ok) 10%, var(--bg)); --bad-bg: color-mix(in oklab, var(--bad) 12%, var(--bg));
+    --warn-bg: color-mix(in oklab, var(--warn) 9%, var(--bg)); --accent-bg: color-mix(in oklab, var(--accent) 14%, var(--bg));
+    --sans: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --r-lg: 14px; --r-md: 10px; --r-sm: 7px;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
-    font: 14px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    font: 14px/1.5 var(--sans); font-feature-settings: "tnum" 0; -webkit-font-smoothing: antialiased; }
   button, input, textarea, select { font: inherit; color: inherit; }
   button { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
     padding: 6px 12px; cursor: pointer; }
   button:hover:not(:disabled) { border-color: var(--accent); }
   button:disabled { opacity: .45; cursor: default; }
-  button.primary { background: var(--accent2); border-color: var(--accent2); color: #fff; font-weight: 600; }
-  button.danger { border-color: #5a2b2b; color: var(--bad); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 650; }
+  button.danger { border-color: var(--bad-line); color: var(--bad); }
   button.small { padding: 2px 8px; font-size: 12px; }
   input, textarea, select { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
     padding: 6px 8px; width: 100%; }
@@ -36,9 +51,9 @@
     border-bottom: 1px solid var(--border); background: var(--panel); }
   header h1 { font-size: 15px; margin: 0; font-weight: 650; }
   .chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--border); color: var(--dim); }
-  .chip.running { color: var(--ok); border-color: #1f5c43; }
-  .chip.waiting { color: var(--warn); border-color: #6b5320; }
-  .chip.failed { color: var(--bad); border-color: #5a2b2b; }
+  .chip.running { color: var(--ok); border-color: var(--ok-line); }
+  .chip.waiting { color: var(--warn); border-color: var(--warn-line); }
+  .chip.failed { color: var(--bad); border-color: var(--bad-line); }
 
   .layout { display: grid; grid-template-columns: 240px 1fr; height: calc(100% - 48px); }
   aside { border-right: 1px solid var(--border); background: var(--panel); overflow-y: auto; padding: 12px; }
@@ -76,14 +91,14 @@
   .ms { position: relative; }
   .ms.st-done { border-left: 3px solid var(--ok); }
   .ms.st-skipped { border-left: 3px solid var(--warn); }
-  .ms.st-current { border-left: 3px solid var(--accent); box-shadow: 0 0 0 1px #2c3a66; }
+  .ms.st-current { border-left: 3px solid var(--accent); box-shadow: 0 0 0 1px var(--accent-line); }
   .ms .head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .ms .num { color: var(--dim); font-weight: 600; min-width: 20px; }
   .ms .head input { flex: 1 1 240px; min-width: 0; font-weight: 600; }
   .ms .head select { width: 110px; }
   .ms .meta { font-size: 12px; color: var(--dim); margin-top: 6px; }
 
-  .escalation { border-color: #6b5320; background: #211c12; }
+  .escalation { border-color: var(--warn-line); background: var(--warn-bg); }
   .escalation h3 { margin: 0 0 6px; color: var(--warn); font-size: 15px; }
   pre { white-space: pre-wrap; word-break: break-word; background: var(--bg); border: 1px solid var(--border);
     border-radius: 6px; padding: 8px; max-height: 220px; overflow: auto; margin: 6px 0; }
@@ -94,22 +109,22 @@
   .feedhead label { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 12px; }
   .feedhead input { width: auto; }
   #feed { padding: 12px 24px; font-size: 13px; }
-  .ev { padding: 3px 0; border-bottom: 1px dashed #20242d; white-space: pre-wrap; word-break: break-word; }
+  .ev { padding: 3px 0; border-bottom: 1px dashed var(--line-soft); white-space: pre-wrap; word-break: break-word; }
   .ev .t { color: var(--dim); font-family: var(--mono); font-size: 11px; margin-right: 8px; }
   .ev.say .who { color: var(--purple); font-weight: 600; margin-right: 6px; }
   .ev.agent { color: var(--dim); font-family: var(--mono); font-size: 12px; border-bottom: none; padding: 1px 0 1px 14px; }
   .ev.turn { color: var(--text); }
   .ev.divider { border: none; margin: 14px 0 6px; font-weight: 650; color: var(--accent); }
   .badge { font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); margin-right: 4px; }
-  .badge.ok { color: var(--ok); border-color: #1f5c43; } .badge.bad { color: var(--bad); border-color: #5a2b2b; }
-  .badge.act { color: var(--accent); border-color: #2c3a66; }
+  .badge.ok { color: var(--ok); border-color: var(--ok-line); } .badge.bad { color: var(--bad); border-color: var(--bad-line); }
+  .badge.act { color: var(--accent); border-color: var(--accent-line); }
   /* right panel tabs */
   .tabs { display: flex; gap: 2px; }
   .tab { background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0;
     padding: 6px 10px; color: var(--dim); font-weight: 600; }
   .tab:hover:not(:disabled) { color: var(--text); border-color: transparent; }
   .tab.on { color: var(--text); border-bottom-color: var(--accent); }
-  .tab .count { font-size: 11px; background: var(--accent2); color: #fff; border-radius: 999px; padding: 0 6px; margin-left: 4px; }
+  .tab .count { font-size: 11px; background: var(--accent); color: var(--on-accent); border-radius: 999px; padding: 0 6px; margin-left: 4px; }
   .pane { flex: 1; overflow-y: auto; min-height: 0; }
 
   /* chat */
@@ -118,14 +133,14 @@
   .msg > .who { font-size: 11px; font-weight: 700; letter-spacing: .03em; text-transform: uppercase; padding: 6px 10px 0; display: flex; gap: 8px; }
   .msg > .who .t { color: var(--dim); font-weight: 400; text-transform: none; font-family: var(--mono); }
   .msg > .body { padding: 4px 10px 8px; white-space: pre-wrap; word-break: break-word; }
-  .msg.supervisor { border-color: #4a3566; } .msg.supervisor > .who { color: var(--purple); }
-  .msg.agent { border-color: #2c3a66; } .msg.agent > .who { color: var(--accent); }
+  .msg.supervisor { border-color: var(--accent-line); } .msg.supervisor > .who { color: var(--purple); }
+  .msg.agent { border-color: var(--accent-line); } .msg.agent > .who { color: var(--accent); }
   .msg.system { background: none; border-style: dashed; color: var(--dim); font-size: 12.5px; }
-  .msg.system.error { color: var(--bad); border-color: #5a2b2b; }
+  .msg.system.error { color: var(--bad); border-color: var(--bad-line); }
   .msg.tool { background: var(--bg); }
   .msg.tool > .who { color: var(--dim); }
   .msg.tool .summary { font-family: var(--mono); font-size: 12.5px; padding: 4px 10px 6px; color: var(--text); word-break: break-all; }
-  .msg.check.ok { border-color: #1f5c43; } .msg.check.bad { border-color: #5a2b2b; }
+  .msg.check.ok { border-color: var(--ok-line); } .msg.check.bad { border-color: var(--bad-line); }
   .msg.check > .who { color: var(--text); }
   .chatdiv { margin: 18px 0 6px; font-weight: 650; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 4px; }
   details { padding: 0 10px 6px; }
@@ -143,7 +158,7 @@
   .filelist { border-right: 1px solid var(--border); overflow-y: auto; padding: 8px 0; font-family: var(--mono); font-size: 12.5px; }
   .filelist .f { padding: 2px 10px; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; gap: 6px; align-items: center; }
   .filelist .f:hover { background: var(--panel2); }
-  .filelist .f.on { background: #22304f; }
+  .filelist .f.on { background: var(--accent-bg); }
   .filelist .d { color: var(--dim); padding: 6px 10px 2px; white-space: nowrap; }
   .filelist .new { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: none; }
   .filelist .new.old { background: var(--border); }
@@ -151,12 +166,12 @@
   .viewer .vh { position: sticky; top: 0; background: var(--panel); border-bottom: 1px solid var(--border); padding: 8px 12px; font-family: var(--mono); font-size: 12.5px; display: flex; gap: 10px; }
   .code { margin: 0; border: none; border-radius: 0; max-height: none; padding: 8px 0; counter-reset: ln; font-family: var(--mono); font-size: 12.5px; background: none; }
   .code span.l { display: block; padding: 0 12px 0 0; white-space: pre; }
-  .code span.l::before { counter-increment: ln; content: counter(ln); display: inline-block; width: 3.2em; padding-right: 1em; text-align: right; color: #4b5263; user-select: none; }
+  .code span.l::before { counter-increment: ln; content: counter(ln); display: inline-block; width: 3.2em; padding-right: 1em; text-align: right; color: var(--faint); user-select: none; }
 
-  .toast { position: fixed; bottom: 16px; right: 16px; background: #3a1d1d; border: 1px solid #5a2b2b; color: #ffd6d6;
+  .toast { position: fixed; bottom: 16px; right: 16px; background: var(--bad-bg); border: 1px solid var(--bad-line); color: var(--text);
     padding: 10px 14px; border-radius: 8px; max-width: 420px; z-index: 30; box-shadow: 0 6px 24px #0008; }
-  .toast.ok { background: #14291f; border-color: #1f5c43; color: #c8f5df; }
-  .chip.offline { color: var(--bad); border-color: #5a2b2b; }
+  .toast.ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--text); }
+  .chip.offline { color: var(--bad); border-color: var(--bad-line); }
   .runline { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--dim); margin: -6px 0 12px; }
   .runline b { color: var(--text); font-weight: 600; }
   .ms .toggle { background: none; border: none; padding: 0 2px; color: var(--dim); width: 18px; }
@@ -164,7 +179,7 @@
   .ms.collapsed .head input { background: none; border-color: transparent; }
   .ms.collapsed { padding-top: 8px; padding-bottom: 8px; }
   .ms .stag { font-size: 11px; border-radius: 4px; padding: 0 6px; border: 1px solid var(--border); }
-  .ms .stag.done { color: var(--ok); border-color: #1f5c43; } .ms .stag.skipped { color: var(--warn); border-color: #6b5320; }
+  .ms .stag.done { color: var(--ok); border-color: var(--ok-line); } .ms .stag.skipped { color: var(--warn); border-color: var(--warn-line); }
   .msbar { display: flex; gap: 8px; align-items: center; margin: 4px 0 10px; font-size: 12px; }
   .jump { position: absolute; right: 24px; bottom: 16px; z-index: 5; box-shadow: 0 4px 16px #0009; }
   .feedwrap { position: relative; }
@@ -172,14 +187,14 @@
   #menubtn { display: none; padding: 2px 9px; }
 
   /* stats (single series = --series-1; status colors always come with a glyph) */
-  :root { --series-1: #3987e5; --good: #0ca30c; --warning: #fab219; --critical: #d03b3b; --grid: #262b36; }
+  :root { --series-1: #3987e5; --good: var(--ok); --warning: var(--warn); --critical: var(--bad); --grid: var(--line-soft); }
   #stats { padding: 16px 20px 40px; }
   .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 18px; }
   .tile { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; min-width: 0; }
   .tile .k { font-size: 11.5px; color: var(--dim); }
   .tile .v { font-size: 22px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .tile .s { font-size: 11.5px; color: var(--dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .meter { height: 6px; border-radius: 3px; background: #1d3555; margin-top: 6px; overflow: hidden; }
+  .meter { height: 6px; border-radius: 3px; background: color-mix(in oklab, var(--series-1) 22%, var(--panel)); margin-top: 6px; overflow: hidden; }
   .meter > div { height: 100%; background: var(--series-1); border-radius: 3px; }
   .meter.hot > div { background: var(--warning); }
   .sec { margin: 22px 0 8px; display: flex; align-items: baseline; gap: 10px; }
@@ -193,7 +208,7 @@
   .hb .num { color: var(--text); font-variant-numeric: tabular-nums; min-width: 2.5em; text-align: right; }
   table.mt { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
   table.mt th { text-align: right; color: var(--dim); font-weight: 600; font-size: 11.5px; padding: 4px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-  table.mt td { text-align: right; padding: 5px 6px; border-bottom: 1px solid #20242d; white-space: nowrap; }
+  table.mt td { text-align: right; padding: 5px 6px; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
   table.mt th:nth-child(2), table.mt td:nth-child(2), table.mt th:nth-child(3), table.mt td:nth-child(3) { text-align: left; }
   table.mt td.title { white-space: normal; min-width: 120px; }
   table.mt .tbar { display: inline-block; height: 8px; background: var(--series-1); border-radius: 0 4px 4px 0; vertical-align: middle; margin-right: 6px; }
@@ -205,19 +220,19 @@
   .tl .hit:hover + .bar, .tl .bar.hl { fill: #6da7ec; }
   .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--dim); margin-top: 6px; }
   .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--series-1); vertical-align: -1px; margin-right: 5px; }
-  .tip { position: absolute; pointer-events: none; z-index: 10; background: #0b0d11; border: 1px solid var(--border); border-radius: 6px;
+  .tip { position: absolute; pointer-events: none; z-index: 10; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
     padding: 7px 9px; font-size: 12px; max-width: 320px; box-shadow: 0 6px 20px #000a; white-space: normal; }
   .tip b { font-weight: 650; } .tip .dim { font-size: 11.5px; }
 
   /* final review */
   .review h3 { margin: 0; font-size: 15px; }
-  .review.pass { border-color: #1f5c43; } .review.fail, .review.regressions { border-color: #5a2b2b; }
-  .rq { display: grid; grid-template-columns: 18px 1fr; gap: 2px 6px; padding: 5px 0; border-top: 1px solid #20242d; font-size: 13px; }
+  .review.pass { border-color: var(--ok-line); } .review.fail, .review.regressions { border-color: var(--bad-line); }
+  .rq { display: grid; grid-template-columns: 18px 1fr; gap: 2px 6px; padding: 5px 0; border-top: 1px solid var(--line-soft); font-size: 13px; }
   .rq:first-of-type { border-top: none; }
   .rq .g { font-weight: 700; text-align: center; }
   .rq details { grid-column: 2; padding: 0; }
   .rq details pre { max-height: 200px; }
-  .ms .stag.review { color: var(--purple); border-color: #4a3566; }
+  .ms .stag.review { color: var(--purple); border-color: var(--accent-line); }
 
   /* live: the reply being written, and what the agent is doing right now */
   #live { padding: 0 20px 40px; }
@@ -296,6 +311,113 @@
     .a-term i, .a-doc i { width: var(--w); }
     .shimmer { animation: none; background: none; color: var(--dim); }
   }
+
+  /* ================= theme layer: Spruce & lilac ================= */
+  header { height: 54px; gap: 14px; padding: 0 18px; background: var(--bg); border-bottom: 1px solid var(--line-soft); }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand svg { flex: none; }
+  header h1 { font-size: 15.5px; font-weight: 750; letter-spacing: -.01em; }
+  .layout { grid-template-columns: 264px 1fr; height: calc(100% - 54px); }
+  aside { background: var(--bg); border-right: 1px solid var(--line-soft); padding: 14px 12px; }
+  aside button.new { padding: 9px 12px; border-radius: var(--r-md); }
+  .proj { padding: 10px 12px; border-radius: var(--r-md); margin-bottom: 2px; }
+  .proj:hover { background: var(--panel); }
+  .proj.active { background: var(--panel2); border-color: transparent; box-shadow: inset 3px 0 0 var(--accent); }
+  .proj .name { font-weight: 650; }
+  .bar { height: 3px; margin-top: 8px; gap: 2px; background: none; }
+  .bar .done, .bar .skip { border-radius: 2px; } .bar::after { content: ""; flex: 1; background: var(--border); border-radius: 2px; }
+  .bar .done { background: var(--ok); } .bar .skip { background: var(--warn); }
+  main { background: var(--bg); }
+  .project > .scroll:first-child { border-right: 1px solid var(--line-soft); }
+  .scroll { padding: 22px 26px; }
+
+  button { border-radius: var(--r-sm); background: var(--panel2); border-color: var(--border); padding: 7px 13px; font-weight: 500;
+    transition: border-color .15s, background-color .15s, filter .15s; }
+  button:hover:not(:disabled) { border-color: var(--accent-line); background: color-mix(in oklab, var(--panel2) 80%, var(--accent) 6%); }
+  button.primary:hover:not(:disabled) { filter: brightness(1.08); border-color: var(--accent); background: var(--accent); }
+  button.danger { border-color: var(--bad-line); color: var(--bad); background: transparent; }
+  button.small { border-radius: 6px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  input, textarea, select { background: var(--bg); border-color: var(--border); border-radius: var(--r-sm); padding: 8px 10px; }
+  textarea.grow { resize: none; overflow: hidden; }
+  .tabs .tab, .tabs .tab:hover:not(:disabled) { background: none; }
+  input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in oklab, var(--accent) 22%, transparent); }
+  ::placeholder { color: var(--faint); }
+  label { font-size: 12.5px; font-weight: 500; margin: 12px 0 5px; }
+  .card { border-radius: var(--r-lg); border-color: var(--line-soft); padding: 16px 18px; }
+  .chip { border-radius: 999px; padding: 3px 10px; background: var(--panel); border-color: var(--line-soft); }
+  .chip.running { color: var(--ok); border-color: var(--ok-line); } .chip.waiting { color: var(--warn); border-color: var(--warn-line); background: var(--warn-bg); }
+  .mono, code, pre { font-family: var(--mono); }
+  pre { border-radius: var(--r-sm); background: color-mix(in oklab, var(--bg) 70%, black 30%); border-color: var(--line-soft); }
+  .toast { border-radius: var(--r-md); }
+  .t, .ev .t, .msg > .who .t { font-family: var(--sans); font-variant-numeric: tabular-nums; }
+
+  /* project header: the name, then a rail with one segment per milestone */
+  .toolbar { margin-bottom: 6px; }
+  .toolbar h2 { font-size: 26px; font-weight: 800; letter-spacing: -.025em; line-height: 1.1; }
+  #p-progress { background: none; border: none; padding: 0; color: var(--dim); font-size: 13px; }
+  .rail { display: flex; gap: 3px; margin: 4px 0 18px; }
+  .rail span { flex: 1; height: 6px; border-radius: 3px; background: var(--border); min-width: 6px; }
+  .rail .done { background: var(--ok); } .rail .skipped { background: var(--warn); }
+  .rail .current { background: var(--accent); box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 25%, transparent); animation: railglow 1.8s ease-in-out infinite alternate; }
+  @keyframes railglow { to { box-shadow: 0 0 10px 2px color-mix(in oklab, var(--accent) 45%, transparent); } }
+  .runline { margin: -10px 0 14px; }
+
+  /* milestones: a vertical track with a status node per stop */
+  #p-ms { position: relative; padding-left: 28px; }
+  #p-ms::before { content: ""; position: absolute; left: 9px; top: 20px; bottom: 20px; width: 2px; background: var(--border); border-radius: 1px; }
+  .ms { border-left: 1px solid var(--line-soft) !important; box-shadow: none; }
+  .ms::before { content: ""; position: absolute; left: -25px; top: 19px; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--bg); border: 2px solid var(--faint); }
+  .ms.st-done::before { background: var(--ok); border-color: var(--ok); }
+  .ms.st-skipped::before { border-color: var(--warn); background: var(--warn-bg); }
+  .ms.st-current { border-color: var(--accent-line) !important; background: color-mix(in oklab, var(--panel) 85%, var(--accent) 6%); }
+  .ms.st-current::before { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent) 25%, transparent); }
+  .ms.collapsed { background: transparent; }
+  .ms.collapsed .head input { font-weight: 600; color: var(--dim); }
+  .ms .num { color: var(--faint); font-variant-numeric: tabular-nums; }
+  .ms .stag { border-radius: 999px; padding: 1px 8px; }
+  .msbar { margin: 18px 0 10px; }
+
+  input[type=checkbox] { accent-color: var(--accent); width: auto; }
+  .escalation .row { flex-wrap: wrap; } .escalation button, .toolbar button { white-space: nowrap; }
+  /* the help request: the one gold thing on screen */
+  .escalation { background: var(--warn-bg); border-color: var(--warn-line); }
+
+  /* right panel */
+  .feedhead { padding: 0 20px; height: 52px; border-bottom: 1px solid var(--line-soft); }
+  .tab { padding: 15px 10px 13px; font-weight: 600; font-size: 13.5px; }
+  .tab.on { border-bottom-color: var(--accent); }
+  .msg { border-radius: var(--r-md); border-color: var(--line-soft); background: var(--panel); }
+  .msg > .who { text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 650; padding: 8px 12px 0; }
+  .msg > .body { padding: 4px 12px 10px; }
+  .msg.supervisor { box-shadow: inset 3px 0 0 var(--accent); border-color: var(--line-soft); }
+  .msg.agent { box-shadow: inset 3px 0 0 var(--sky); border-color: var(--line-soft); } .msg.agent > .who { color: var(--sky); }
+  .msg.live { border: 1px dashed var(--sky-line); box-shadow: inset 3px 0 0 var(--sky); }
+  .msg.tool { background: color-mix(in oklab, var(--bg) 75%, black 25%); }
+  .msg.tool .summary { color: var(--text); }
+  .msg.check.ok { border-color: var(--ok-line); } .msg.check.bad { border-color: var(--bad-line); }
+  .chatdiv { color: var(--text); font-size: 15px; font-weight: 750; letter-spacing: -.01em; border-bottom-color: var(--line-soft); margin-top: 24px; }
+  .filechip { color: var(--accent); border-color: var(--line-soft); border-radius: 5px; }
+  .tile { border-radius: var(--r-md); border-color: var(--line-soft); }
+  .tile .v { font-weight: 750; letter-spacing: -.02em; font-size: 24px; }
+
+  /* welcome */
+  .welcome h2.display { font-size: 40px; line-height: 1.08; font-weight: 800; letter-spacing: -.03em; margin: 0 0 18px; max-width: 14ch; }
+  .welcome .lede { font-size: 16px; color: var(--dim); max-width: 56ch; }
+  .steps { list-style: none; padding: 0; margin: 26px 0; counter-reset: step; display: grid; gap: 14px; }
+  .steps li { counter-increment: step; display: grid; grid-template-columns: 30px 1fr; gap: 2px 12px; color: var(--dim); max-width: 60ch; }
+  .steps li::before { content: counter(step); grid-row: span 2; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+    font-weight: 700; font-size: 13px; color: var(--on-accent); background: var(--accent); }
+  .steps b { color: var(--text); font-weight: 650; }
+
+  /* drafting a milestone */
+  .composer { border-style: dashed; border-color: var(--accent-line); background: transparent; }
+  .composer textarea { min-height: 60px; }
+  .ms.drafted { border-color: var(--accent) !important; }
+  .ms .drafted-note { font-size: 12px; color: var(--accent); margin-top: 6px; }
+  .suggest { font-size: 11.5px; padding: 1px 8px; margin-left: 8px; }
+  @media (prefers-reduced-motion: reduce) { .rail .current { animation: none; } }
   @media (max-width: 1000px) {
     #menubtn { display: inline-block; }
     .layout { grid-template-columns: 1fr; }
@@ -317,7 +439,14 @@
 <body>
 <header>
   <button id="menubtn" title="Projects">☰</button>
-  <h1>OpenHands Supervisor</h1>
+  <span class="brand">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
+      <circle cx="13" cy="13" r="11.5" fill="none" stroke="var(--accent)" stroke-width="2"/>
+      <circle cx="13" cy="13" r="6" fill="none" stroke="var(--sky)" stroke-width="2" stroke-dasharray="26 12" transform="rotate(-40 13 13)"/>
+      <path d="M9.5 13.2l2.4 2.4 4.6-5" fill="none" stroke="var(--ok)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <h1>OpenHands Supervisor</h1>
+  </span>
   <span class="chip" id="model"></span>
   <span class="grow"></span>
   <span class="chip offline hidden" id="offline" title="Can't reach the supervisor; retrying">disconnected</span>
@@ -334,12 +463,14 @@
 
 <template id="tpl-welcome">
   <div class="scroll"><div class="welcome">
-    <h2>Supervise a local coding agent</h2>
-    <p>Describe what to build. Your local model plans it into small milestones, each with a check
-      command that defines "done". OpenHands then works through them in a sandbox while the
-      supervisor keeps it on track: verifying "done" for real, answering its questions, and
-      restarting it when it gets lost.</p>
-    <p>Start with <b>+ New project</b>, or pick one on the left.</p>
+    <h2 class="display">Let the agent work. Step in only when it's stuck.</h2>
+    <p class="lede">OpenHands writes the code on your local model. The supervisor keeps it honest: "done" is decided by real commands, never by the model's word.</p>
+    <ol class="steps">
+      <li><b>Describe what to build.</b><span>Your model splits it into small milestones, each with a command that proves it works.</span></li>
+      <li><b>Review the plan and press Run.</b><span>Watch it work live. Close the tab if you like; the run keeps going.</span></li>
+      <li><b>Answer when it asks.</b><span>If the agent can't get a milestone to pass, you get a hint box. At the end, a final review tests the whole goal.</span></li>
+    </ol>
+    <p>Start with <b>+ New project</b>, or open one from the project list.</p>
   </div></div>
 </template>
 
@@ -374,6 +505,7 @@
         <button class="primary" id="p-run">Run</button>
         <button class="danger hidden" id="p-stop">Stop</button>
       </div>
+      <div class="rail" id="p-rail"></div>
       <div class="runline hidden" id="p-runline"></div>
       <div id="p-jobmsg" class="card hidden"></div>
       <div id="p-review" class="card review hidden"></div>
@@ -400,7 +532,15 @@
       <div class="msbar"><span class="dim" id="ms-count"></span><span class="grow"></span>
         <button class="small" id="ms-expand">Expand all</button><button class="small" id="ms-collapse">Collapse finished</button></div>
       <div id="p-ms"></div>
-      <button id="p-add">+ Add milestone</button>
+      <div class="card composer" id="p-composer">
+        <label for="mc-text" style="margin-top:0">Add a milestone: describe what the agent should do next</label>
+        <textarea id="mc-text" rows="2" placeholder="e.g. Add a done command that marks a task as finished, and a test for it"></textarea>
+        <div class="row" style="margin-top:10px">
+          <button class="primary" id="mc-draft" title="Ctrl+Enter">Draft milestone</button>
+          <button id="p-add">Add blank</button>
+          <span class="dim grow" id="mc-status" style="font-size:12.5px"></span>
+        </div>
+      </div>
     </div>
     <div class="feedwrap">
       <div class="feedhead">
@@ -461,6 +601,7 @@ const S = {
   files: null,       // /api/projects/<name>/files
   openFile: null,    // {path, mtime}
   toggled: new Set(), // finished milestones the user folded/unfolded against the default
+  drafted: new Set(), // milestones the model drafted, highlighted until saved
   collapseDone: localStorage.getItem("collapseDone") !== "0",
   online: true,
 };
@@ -506,7 +647,7 @@ async function refreshState() {
 }
 async function loadProject(name, { keepDraft = false } = {}) {
   S.project = await api("GET", `/api/projects/${encodeURIComponent(name)}`);
-  if (!keepDraft || !S.dirty) { S.draft = structuredClone(S.project.contract); setDirty(false); }
+  if (!keepDraft || !S.dirty) { S.draft = structuredClone(S.project.contract); S.drafted = new Set(); setDirty(false); }
 }
 const job = () => S.state && S.state.job;
 const jobActive = () => !!(job() && job().active);
@@ -602,7 +743,9 @@ async function openProject(name, skipConfirm = false) {
   $("#p-save").onclick = () => save();
   $("#p-run").onclick = run;
   $("#p-stop").onclick = stop;
-  $("#p-add").onclick = () => { S.draft.milestones.push({ title: "", instructions: "", check: "", status: "pending", restarts: 0, notes: [], source: "" }); setDirty(true); renderMilestones(); };
+  $("#p-add").onclick = () => { addMilestone({ title: "", instructions: "", check: "" }, false); };
+  $("#mc-draft").onclick = draftMilestone;
+  $("#mc-text").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); draftMilestone(); } };
   $("#esc-retry").onclick = () => answer("guidance");
   $("#esc-text").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); answer("guidance"); } };
   $("#ms-expand").onclick = () => { S.collapseDone = false; localStorage.setItem("collapseDone", "0"); S.toggled = new Set(); renderMilestones(); };
@@ -680,8 +823,8 @@ function callArgsBlock(r) {
   if (a.file_text) return el("details", {}, el("summary", { text: `file content (${a.file_text.split("\n").length} lines)` }), el("pre", { class: "mono", text: a.file_text }));
   if (a.old_str != null || a.new_str != null)
     return el("details", {}, el("summary", { text: "edit" }),
-      el("pre", { class: "mono", style: "border-color:#5a2b2b", text: a.old_str || "" }),
-      el("pre", { class: "mono", style: "border-color:#1f5c43", text: a.new_str || "" }));
+      el("pre", { class: "mono", style: "border-color:var(--bad-line)", text: a.old_str || "" }),
+      el("pre", { class: "mono", style: "border-color:var(--ok-line)", text: a.new_str || "" }));
   const rest = Object.fromEntries(Object.entries(a).filter(([k]) => !["command", "path"].includes(k)));
   if (Object.keys(rest).length && r.tool !== "terminal")
     return el("details", {}, el("summary", { text: "arguments" }), el("pre", { class: "mono", text: JSON.stringify(rest, null, 2) }));
@@ -1052,6 +1195,60 @@ function renderEditor() {
   renderMilestones();
 }
 
+// ---------- drafting milestones with the model ----------
+function addMilestone(m, drafted) {
+  S.draft.milestones.push({ title: m.title || "", instructions: m.instructions || "", check: m.check || "", status: "pending", restarts: 0, notes: [], source: "" });
+  const i = S.draft.milestones.length - 1;
+  if (drafted) S.drafted.add(i);
+  setDirty(true); renderMilestones();
+  const card = $("#p-ms").children[i];
+  if (card) { card.scrollIntoView({ behavior: "smooth", block: "center" }); (card.querySelector(drafted ? ".check" : ".head input") || {}).focus?.({ preventScroll: true }); }
+}
+async function askDraft(body) {
+  return api("POST", `/api/projects/${encodeURIComponent(S.current)}/milestones/draft`, { ...body, contract: S.draft });
+}
+async function draftMilestone() {
+  const text = $("#mc-text").value.trim();
+  if (!text) { $("#mc-text").focus(); return toast("Describe what the milestone should do first."); }
+  const btn = $("#mc-draft"), status = $("#mc-status"), name = S.current;
+  btn.disabled = true;
+  status.replaceChildren(anim("plan"), " ", el("span", { class: "shimmer", text: `Drafting with ${S.state.model}...` }));
+  try {
+    const m = await askDraft({ description: text });
+    if (S.current !== name || S.view !== "project") return;
+    $("#mc-text").value = ""; status.textContent = "";
+    addMilestone(m, true);
+    toast("Milestone drafted. Check the command, then Save.", "ok");
+  } catch (e) { toast(e.message); status.textContent = ""; }
+  finally { if ($("#mc-draft")) $("#mc-draft").disabled = jobHere(); }
+}
+// Fill in the check command (and anything else left empty) for a milestone you wrote.
+async function suggestCheck(i, btn) {
+  const m = S.draft.milestones[i];
+  if (!m.title.trim() && !m.instructions.trim()) return toast("Write a title or instructions first, so there's something to check.");
+  btn.disabled = true; const label = btn.textContent;
+  btn.replaceChildren(anim("plan"), " Suggesting...");
+  try {
+    const out = await askDraft({ title: m.title, instructions: m.instructions });
+    if (S.draft.milestones[i] !== m) return;  // plan changed meanwhile
+    if (m.check.trim() && !confirm(`Replace the current check command?\n\n${m.check}\n\nwith\n\n${out.check}`)) return;
+    m.check = out.check;
+    if (!m.title.trim()) m.title = out.title;
+    if (!m.instructions.trim()) m.instructions = out.instructions;
+    S.drafted.add(i); setDirty(true); renderMilestones();
+  } catch (e) { toast(e.message); }
+  finally { if (btn.isConnected) { btn.disabled = false; btn.textContent = label; } }
+}
+
+// Text boxes grow with their content instead of clipping it.
+function autogrow(ta) {
+  ta.classList.add("grow");
+  const fit = () => { ta.style.height = "auto"; ta.style.height = `${ta.scrollHeight + 2}px`; };
+  ta.addEventListener("input", fit);
+  requestAnimationFrame(fit);
+  return ta;
+}
+
 function currentMilestoneIndex() {
   if (!jobHere()) return -1;
   return S.draft.milestones.findIndex(m => m.status === "pending");
@@ -1066,18 +1263,20 @@ function renderMilestones() {
     const status = el("select", { onchange: upd("status") },
       ...["pending", "done", "skipped"].map(s => { const o = el("option", { value: s, text: s }); if (m.status === s) o.selected = true; return o; }));
     const move = (d) => () => { const j = i + d; if (j < 0 || j >= S.draft.milestones.length) return;
-      [S.draft.milestones[i], S.draft.milestones[j]] = [S.draft.milestones[j], S.draft.milestones[i]]; S.toggled = new Set(); setDirty(true); renderMilestones(); };
-    const del = () => { if (confirm(`Delete milestone ${i + 1}?`)) { S.draft.milestones.splice(i, 1); S.toggled = new Set(); setDirty(true); renderMilestones(); } };
+      [S.draft.milestones[i], S.draft.milestones[j]] = [S.draft.milestones[j], S.draft.milestones[i]]; S.toggled = new Set(); S.drafted = new Set(); setDirty(true); renderMilestones(); };
+    const del = () => { if (confirm(`Delete milestone ${i + 1}?`)) { S.draft.milestones.splice(i, 1); S.toggled = new Set(); S.drafted = new Set(); setDirty(true); renderMilestones(); } };
     const title = el("input", { value: m.title, placeholder: "Milestone title", oninput: upd("title") });
     const head = el("div", { class: "head" }, el("span", { class: "num", text: `${i + 1}.` }), title, status,
       el("button", { class: "small", title: "Move up", onclick: move(-1), text: "↑" }),
       el("button", { class: "small", title: "Move down", onclick: move(1), text: "↓" }),
       el("button", { class: "small danger", title: "Delete", onclick: del, text: "✕" }));
-    const instr = el("textarea", { rows: "2", placeholder: "What to build, concretely", oninput: upd("instructions") }); instr.value = m.instructions || "";
-    const check = el("input", { class: "mono", value: m.check, placeholder: "cargo test test_add", oninput: upd("check") });
+    const instr = el("textarea", { rows: "2", placeholder: "What to build, concretely", oninput: upd("instructions") }); instr.value = m.instructions || ""; autogrow(instr);
+    const check = el("input", { class: "mono check", value: m.check, placeholder: "cargo test test_add", oninput: upd("check") });
+    const suggest = el("button", { class: "small suggest", title: "Let the supervisor write a check command from the title and instructions", text: "Suggest",
+      onclick: (e) => { e.preventDefault(); suggestCheck(i, suggest); } });
     const notes = el("textarea", { rows: "1", placeholder: "Hints for the agent (one per line)",
       oninput: (e) => { m.notes = e.target.value.split("\n").map(s => s.trim()).filter(Boolean); setDirty(true); } });
-    notes.value = (m.notes || []).join("\n");
+    notes.value = (m.notes || []).join("\n"); autogrow(notes);
     const meta = el("div", { class: "meta", text: [i === cur ? "▶ in progress" : "", m.restarts ? `${m.restarts} restart(s)` : "",
       (m.notes || []).length ? `${m.notes.length} note(s)` : ""].filter(Boolean).join(" · ") });
     // Finished milestones fold to one line so the one that matters stays in view.
@@ -1091,23 +1290,26 @@ function renderMilestones() {
     if (m.source === "review") head.insertBefore(el("span", { class: "stag review", text: "from review", title: "Added by the final review because a requirement of the goal failed" }), status);
     const body = el("div", { class: "body" },
       el("label", { text: "Instructions" }), instr,
-      el("label", { text: "Check command (exit code 0 = done)" }), check,
-      el("label", { text: "Notes / guidance" }), notes, meta);
-    const card = el("div", { class: `card ms st-${i === cur ? "current" : m.status}` + (collapsed ? " collapsed" : "") }, head, body);
+      el("label", {}, "Check command (exit code 0 = done)", m.status === "pending" ? suggest : null), check,
+      el("label", { text: "Notes / guidance" }), notes, meta,
+      S.drafted.has(i) ? el("div", { class: "drafted-note", text: "Drafted by the supervisor. Check that the command really proves this works, then Save." }) : null);
+    const card = el("div", { class: `card ms st-${i === cur ? "current" : m.status}` + (collapsed ? " collapsed" : "") + (S.drafted.has(i) ? " drafted" : "") }, head, body);
     card.querySelectorAll("input, textarea, select, button:not(.toggle)").forEach(n => n.disabled = locked);
     box.append(card);
   });
   const ms = S.draft.milestones;
   $("#ms-count").textContent = `${ms.length} milestone${ms.length === 1 ? "" : "s"} · ${ms.filter(m => m.status === "done").length} done` +
     (ms.some(m => m.status === "skipped") ? ` · ${ms.filter(m => m.status === "skipped").length} skipped` : "");
-  $("#p-add").disabled = locked;
+  $("#p-add").disabled = locked; $("#mc-draft").disabled = locked; $("#mc-text").disabled = locked;
+  renderRail();
   $("#p-goal").disabled = locked; $("#p-setup").disabled = locked;
 }
 
 function renderProjectChrome() {
   if (S.view !== "project") return;
   const p = S.state.projects.find(x => x.name === S.current);
-  $("#p-progress").textContent = p ? `${p.done}/${p.total} done` : "";
+  $("#p-progress").textContent = p ? `${p.done} of ${p.total} done` : "";
+  renderRail();
   const here = jobHere(); const j = job();
   $("#p-run").classList.toggle("hidden", here);
   $("#p-stop").classList.toggle("hidden", !here);
@@ -1126,7 +1328,7 @@ function renderProjectChrome() {
   const msg = $("#p-jobmsg");
   if (j && j.project === S.current && j.message && !j.escalation) {
     msg.textContent = j.message; msg.classList.remove("hidden");
-    msg.style.borderColor = j.status === "failed" ? "#5a2b2b" : "";
+    msg.style.borderColor = j.status === "failed" ? "var(--bad-line)" : "";
   } else msg.classList.add("hidden");
   // escalation
   const esc = here && j.escalation;
@@ -1183,6 +1385,14 @@ function renderReview() {
     list);
 }
 
+// One segment per milestone, in order: mint done, gold skipped, lilac in progress.
+function renderRail() {
+  const rail = $("#p-rail"); if (!rail || !S.draft) return;
+  const cur = currentMilestoneIndex();
+  rail.replaceChildren(...S.draft.milestones.map((m, i) => el("span", {
+    class: i === cur ? "current" : m.status, title: `${i + 1}. ${m.title || "(untitled)"}: ${i === cur ? "in progress" : m.status}` })));
+}
+
 function renderRunline() {
   const box = $("#p-runline"); if (!box) return;
   const j = job();
@@ -1205,7 +1415,7 @@ async function save(quiet) {
   const name = S.current;
   try {
     const p = await api("PUT", `/api/projects/${encodeURIComponent(name)}`, { contract: S.draft });
-    if (S.current === name) { S.project = p; S.draft = structuredClone(p.contract); S.saving = false; setDirty(false); renderEditor(); }
+    if (S.current === name) { S.project = p; S.draft = structuredClone(p.contract); S.drafted = new Set(); S.saving = false; setDirty(false); renderEditor(); }
     if (!quiet) toast("Plan saved.", "ok");
     await refreshState();
     return true;

@@ -59,6 +59,12 @@ Then open **http://<that-machine>:8765** in a browser.
 - **Review the plan**: edit the goal, setup commands, and each milestone's
   title, instructions, check command and notes. Reorder, add, delete, or set a
   milestone back to `pending` to redo it. *Save*.
+- **Add a milestone** by describing it in plain words and pressing *Draft
+  milestone*: your model writes the title, instructions and check command,
+  using the project's files and existing checks as a guide. Or add a blank one,
+  write the title/instructions yourself, and press *Suggest* next to the check
+  command. Drafts aren't saved until you press *Save*, so read the command
+  first: it decides when the milestone counts as done.
 - **Run**: watch it live on the right: each turn's outcome (actions, files
   changed, check passed/failed, and what the supervisor decided), plus the
   agent's individual steps. The *Chat* tab shows the agent's reply **as the

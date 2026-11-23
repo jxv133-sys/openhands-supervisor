@@ -66,3 +66,24 @@ def test_prompt_contents():
 def test_handoff_note():
     note = handoff_note("stuck", "src/main.rs", "cargo build", "error here")
     assert "stuck" in note and "src/main.rs" in note and "error here" in note
+
+
+def test_parse_milestone_and_draft_prompt(monkeypatch):
+    from supervisor import planner
+
+    assert planner.parse_milestone('<think>x</think>{"title": "Add list", "instructions": "i", "check": "cargo test test_list"}') == {
+        "title": "Add list", "instructions": "i", "check": "cargo test test_list"}
+    with pytest.raises(ValueError):
+        planner.parse_milestone('{"title": "t", "instructions": "", "check": ""}')
+    sent = {}
+
+    def fake_post(url, payload, timeout):
+        sent["prompt"] = payload["messages"][0]["content"]
+        return {"message": {"content": '{"title": "T", "instructions": "I", "check": "true"}'}}
+
+    monkeypatch.setattr(planner, "_post_json", fake_post)
+    c = Contract.from_dict(RAW)
+    out = planner.draft_milestone(c, "", "src/main.rs", "http://x", "m", title="Add done", instructions="mark done")
+    assert out["check"] == "true"
+    p = sent["prompt"]
+    assert "Title: Add done" in p and "cargo test add" in p and "src/main.rs" in p and "Rules for checks" in p

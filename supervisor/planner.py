@@ -32,13 +32,7 @@ PLAN_SCHEMA = {
     "required": ["setup", "milestones"],
 }
 
-PLANNER_PROMPT = """You plan software projects for a coding agent that works in a Linux (Debian) sandbox.
-Break the goal below into 3 to 8 small, sequential milestones. Each milestone must:
-- be small enough to finish by editing a few files,
-- build on the previous ones,
-- have a "check": ONE shell command, run from the project root, that exits with code 0
-  only when the milestone is truly done.
-Rules for checks (they are run after EVERY step, many times, in any order):
+CHECK_RULES = """Rules for checks (they are run after EVERY step, many times, in any order):
 - Prefer automated tests: tell the agent in the instructions to write tests for the
   feature (e.g. a Rust test named `test_add`), and make the check run just those tests
   (`cargo test test_add`, `python -m pytest tests/test_add.py -q`). Use `cargo build` only
@@ -54,7 +48,15 @@ Rules for checks (they are run after EVERY step, many times, in any order):
   Do not use `--exact` (tests inside `mod tests` would not match).
   pytest needs no grep: `python -m pytest tests/test_add.py -q` already fails if nothing ran.
 - No user input, no server left running, no GUI.
-Also list "setup": shell commands that install the language toolchain the project
+"""
+
+PLANNER_PROMPT = """You plan software projects for a coding agent that works in a Linux (Debian) sandbox.
+Break the goal below into 3 to 8 small, sequential milestones. Each milestone must:
+- be small enough to finish by editing a few files,
+- build on the previous ones,
+- have a "check": ONE shell command, run from the project root, that exits with code 0
+  only when the milestone is truly done.
+{check_rules}Also list "setup": shell commands that install the language toolchain the project
 needs, written so they are safe to run again (e.g. for Rust:
 `command -v cargo || (curl -sSf https://sh.rustup.rs | sh -s -- -y)`). Empty list if none needed.
 Instructions should say WHAT to build, concretely, in 1-4 sentences. No code.
@@ -96,8 +98,87 @@ def plan(goal: str, ollama_url: str, model: str, timeout: float = 900) -> Contra
             "think": False,
             "format": PLAN_SCHEMA,
             "options": {"temperature": 0.3},
-            "messages": [{"role": "user", "content": PLANNER_PROMPT.format(goal=goal)}],
+            "messages": [{"role": "user", "content": PLANNER_PROMPT.format(goal=goal, check_rules=CHECK_RULES)}],
         },
         timeout,
     )
     return parse_plan(goal, response["message"]["content"])
+
+
+MILESTONE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "instructions": {"type": "string"},
+        "check": {"type": "string"},
+    },
+    "required": ["title", "instructions", "check"],
+}
+
+DRAFT_PROMPT = """You plan work for a coding agent that works in a Linux (Debian) sandbox.
+The project already has a plan. Write ONE new milestone for what the user describes below.
+The milestone must be small enough to finish by editing a few files, and must have a
+"check": ONE shell command, run from the project root, that exits with code 0 only when
+the milestone is truly done.
+{check_rules}Use the language, file names and test style the project already uses (see its files and
+the existing milestones' checks).
+"title": short, starts with a verb. "instructions": WHAT to build, concretely, in 1-4
+sentences, including which tests to write so the check can run them. No code.
+
+Overall goal of the project:
+{goal}
+
+Existing milestones:
+{milestones}
+
+Project files:
+{tree}
+
+{request}
+
+Reply with JSON only."""
+
+
+def draft_milestone(contract: Contract, description: str, tree: str, ollama_url: str, model: str,
+                    title: str = "", instructions: str = "", timeout: float = 900) -> dict:
+    """One new milestone (title, instructions, check) from a plain-language
+    description. If the user already wrote a title/instructions, keep those and
+    only fill in what's missing (typically the check command)."""
+    milestones = "\n".join(
+        f"{i}. [{m.status}] {m.title} (check: {m.check})" for i, m in enumerate(contract.milestones, 1)
+    ) or "(none)"
+    if title or instructions:
+        request = (
+            "The user already started this milestone. Keep their intent; improve wording only if unclear.\n"
+            f"Title: {title or '(none)'}\nInstructions: {instructions or '(none)'}"
+            + (f"\nAlso: {description}" if description else "")
+        )
+    else:
+        request = f"What the user wants next:\n{description}"
+    prompt = DRAFT_PROMPT.format(check_rules=CHECK_RULES, goal=contract.goal, milestones=milestones,
+                                 tree=tree, request=request)
+    response = _post_json(
+        ollama_url.rstrip("/") + "/api/chat",
+        {
+            "model": model,
+            "stream": False,
+            "think": False,
+            "format": MILESTONE_SCHEMA,
+            "options": {"temperature": 0.3},
+            "messages": [{"role": "user", "content": prompt}],
+        },
+        timeout,
+    )
+    return parse_milestone(response["message"]["content"])
+
+
+def parse_milestone(text: str) -> dict:
+    text = re.sub(r"<think>.*?</think>", "", text or "", flags=re.DOTALL).strip()
+    match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    if not match:
+        raise ValueError(f"model returned no JSON object: {text[:300]!r}")
+    data = json.loads(match.group(0))
+    out = {k: str(data.get(k, "") or "").strip() for k in ("title", "instructions", "check")}
+    if not out["check"]:
+        raise ValueError("model returned no check command")
+    return out

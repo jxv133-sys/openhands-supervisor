@@ -297,6 +297,30 @@ class App:
                     touched[changed] = rec.get("ts", "")
         return {"files": files, "touched": touched}
 
+    def draft_milestone(self, name: str, data: dict) -> dict:
+        """Ask the model for one new milestone (with a check command) from a
+        plain description. Nothing is saved: the page adds it to the plan for
+        you to review. `contract` lets it see unsaved edits on the page."""
+        from .planner import draft_milestone
+        from .progress import file_tree
+
+        path = self._require_contract(name)
+        description = str(data.get("description", "")).strip()
+        title = str(data.get("title", "")).strip()
+        instructions = str(data.get("instructions", "")).strip()
+        if not (description or title or instructions):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "describe what the milestone should do")
+        try:
+            contract = Contract.from_dict(data["contract"]) if data.get("contract") else Contract.load(path)
+        except (ValueError, TypeError, AttributeError, KeyError):
+            contract = Contract.load(path)  # half-edited plan on the page: fall back to the saved one
+        try:
+            return draft_milestone(contract, description, file_tree(path), self.settings.ollama_url,
+                                   self.settings.model, title=title, instructions=instructions,
+                                   timeout=self.settings.llm_timeout)
+        except Exception as exc:
+            raise ApiError(HTTPStatus.BAD_GATEWAY, f"drafting failed: {exc}") from exc
+
     def stats(self, name: str) -> dict:
         from . import stats
 
@@ -489,6 +513,8 @@ def make_handler(app: App, token: str | None):
                     return self._json(HTTPStatus.OK, app.start(route[1]))
                 if method == "GET" and len(route) == 3 and route[0] == "projects" and route[2] == "files":
                     return self._json(HTTPStatus.OK, app.files(route[1]))
+                if method == "POST" and route[:1] == ["projects"] and route[2:] == ["milestones", "draft"] and len(route) == 4:
+                    return self._json(HTTPStatus.OK, app.draft_milestone(route[1], self._body()))
                 if method == "GET" and len(route) == 3 and route[0] == "projects" and route[2] == "stats":
                     return self._json(HTTPStatus.OK, app.stats(route[1]))
                 if method == "GET" and len(route) == 3 and route[0] == "projects" and route[2] == "file":
