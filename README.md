@@ -11,6 +11,7 @@ The supervisor does what you were doing by hand:
 | says it's done | runs the milestone's **check command** itself. If it fails, sends back the real error: "You are NOT done." |
 | stops to ask "should I continue?" | answers "yes, decide yourself" (and asks *you* only if it keeps asking) |
 | stops mid-task / returns nothing useful | tells it to keep going, with the current check output |
+| loops while thinking, repeating the same sentences inside one reply | cuts the reply off within seconds (instead of letting it run to the token limit) and restarts the milestone fresh |
 | loops, or repeats the same failure 3 turns in a row | throws away the conversation and restarts the milestone fresh, with a handoff note |
 | burns a whole turn without changing any file | restarts the milestone |
 | still can't do it after 3 restarts | asks you for guidance (type a hint, skip, or quit) |
@@ -192,6 +193,10 @@ shipped file for every option with defaults. The important ones:
   is 49152). OpenHands summarizes history to stay under it. If it's too close,
   Ollama silently cuts the start of the prompt and the agent loses its task.
 - `iterations_per_turn`: tool calls per turn before the supervisor checks in.
+- `loop_guard` (on by default) cuts off a reply that keeps repeating itself. If
+  your model loops often, also try Qwen's sampling advice for thinking mode:
+  `top_p = 0.95`, `top_k = 20`, `presence_penalty = 1.5` (commented out in the
+  shipped `supervisor.toml`).
 - `[limits]`: when to restart and when to ask you.
 
 ## Notes

@@ -21,8 +21,9 @@ from .config import Settings
 from .contract import DONE, SKIPPED, Contract, Milestone
 from .hostpath import host_path
 from .log import RunLog
+from .loopguard import RepetitionDetector
 from .prompts import PROJECT_DIR, handoff_note, milestone_prompt
-from .watchdog import Action, CheckResult, Decision, MilestoneState, decide
+from .watchdog import Action, CheckResult, Decision, MilestoneState, TurnEnd, decide
 
 
 class Quit(Exception):
@@ -67,17 +68,28 @@ class Supervisor:
         self._milestone_n = 0  # tags chat records with the milestone they belong to
         # The model's output while it's still being generated (web UI only).
         self.live = LiveStream(lambda **rec: self.log.publish("stream", milestone=self._milestone_n, **rec))
+        self._loop = RepetitionDetector()
+        self._loop_checked = 0.0
+        self._looping = ""  # set when the loop guard cut the current reply off
 
     def request_stop(self) -> None:
         """Ask the run to stop (thread-safe). Pauses the agent mid-turn if one is
         running; progress is saved and the run ends at the next safe point."""
         self._stop.set()
+        self._interrupt()
+
+    def _interrupt(self) -> None:
+        """Cut the agent off now, even mid-reply. interrupt() cancels the model
+        call in progress; pause() (the fallback) waits for it to finish."""
         conversation = self._conversation
-        if conversation is not None:
+        if conversation is None:
+            return
+        for method in ("interrupt", "pause"):
             try:
-                conversation.pause()
+                getattr(conversation, method)()
+                return
             except Exception:
-                pass
+                continue
 
     def _check_stop(self) -> None:
         if self._stop.is_set():
@@ -85,12 +97,32 @@ class Supervisor:
 
     def _activity(self, kind: str, event) -> None:
         if kind == "StreamingDeltaEvent":  # one token or so of the reply being written
-            self.live.delta(getattr(event, "content", None), getattr(event, "reasoning_content", None))
+            content, reasoning = getattr(event, "content", None), getattr(event, "reasoning_content", None)
+            self.live.delta(content, reasoning)
+            self._guard_loop(reasoning, content)
             return
         record = chat_record(event)
         if record:
+            self._loop.reset()
             self.live.end()  # the finished message/tool call replaces the live text
             self.log.chat(record, milestone=self._milestone_n)
+
+    def _guard_loop(self, *texts) -> None:
+        """Watch the reply being written; cut it off if it loops (see loopguard.py)."""
+        if not self.settings.loop_guard or self._looping:
+            return
+        for text in texts:
+            self._loop.feed(text)
+        now = time.monotonic()
+        if now - self._loop_checked < 1.0:  # checking every token would be wasteful
+            return
+        self._loop_checked = now
+        repeated = self._loop.check()
+        if repeated:
+            self._looping = repeated
+            self.log.say(f"The model is repeating itself mid-reply; cutting it off: \"{repeated}\"")
+            # Not on this thread: it's the SDK's event thread, and interrupt() waits on the server.
+            threading.Thread(target=self._interrupt, name="loop-guard", daemon=True).start()
 
     # --- sandbox helpers ------------------------------------------------
 
@@ -122,7 +154,11 @@ class Supervisor:
         from openhands.workspace import DockerWorkspace
 
         s = self.settings
+        sampling = {k: v for k, v in (("top_p", s.top_p), ("top_k", s.top_k)) if v is not None}
         llm = LLM(
+            **sampling,
+            # Not a field of the SDK's LLM; sent to Ollama in the request body.
+            litellm_extra_body={"presence_penalty": s.presence_penalty} if s.presence_penalty else {},
             usage_id="agent",
             model=f"openai/{s.model}",
             base_url=s.openai_base_url,
@@ -311,6 +347,8 @@ class Supervisor:
                     tokens_before = _token_usage(conversation)
                     started = time.monotonic()
                     collector.reset()
+                    self._loop.reset()
+                    self._looping = ""
                     conversation.send_message(message)
                     exception = ""
                     try:
@@ -325,6 +363,11 @@ class Supervisor:
                     status = _status_of(conversation)
                     changed = progress.changed_files(before, progress.snapshot(self.project_dir))
                     report = collector.report(status, exception, changed_files=len(changed))
+                    if self._looping:
+                        report.end, report.error = TurnEnd.LOOPING, self._looping
+                        self.log.chat({"role": "system", "level": "error", "text":
+                                       f"Cut the agent off: it kept repeating itself while thinking.\nRepeated: \"{self._looping}\""},
+                                      milestone=n)
                     agent_seconds = time.monotonic() - started
                     tokens = _token_usage(conversation)
                     check_started = time.monotonic()

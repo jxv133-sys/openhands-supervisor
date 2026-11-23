@@ -17,6 +17,7 @@ class TurnEnd(str, Enum):
     MESSAGE = "message"  # agent replied with text and stopped (often a question)
     ITER_CAP = "iter_cap"  # hit max actions for one turn
     STUCK = "stuck"  # SDK stuck detector fired (repeating itself)
+    LOOPING = "looping"  # supervisor cut off a reply that kept repeating itself
     ERROR = "error"  # LLM / server / sandbox error
 
 
@@ -163,6 +164,9 @@ def decide(
     # 3. Looping: a fresh conversation is the cure.
     if report.end == TurnEnd.STUCK:
         return _restart(state, limits, "agent was repeating itself (stuck detector)")
+    if report.end == TurnEnd.LOOPING:
+        # The context that produced the loop tends to loop again: start fresh.
+        return _restart(state, limits, "model kept repeating itself while thinking; cut it off")
 
     # 4. Same failure over and over: the current context is poisoned.
     if not check.passed:

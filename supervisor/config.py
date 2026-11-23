@@ -22,6 +22,13 @@ class Settings:
     llm_timeout: int = 900
     # Stream the model's output token by token, so the web UI can show it live.
     stream: bool = True
+    # Cut off a reply that keeps repeating itself mid-generation (needs stream).
+    loop_guard: bool = True
+    # Sampling knobs that make reasoning models loop less. None/0 = Ollama's default.
+    # Qwen's advice for thinking mode: top_p 0.95, top_k 20, presence_penalty up to 1.5.
+    top_p: float | None = None
+    top_k: int | None = None
+    presence_penalty: float = 0.0
     # Sandbox
     server_image: str = "ghcr.io/openhands/agent-server:latest-python"
     iterations_per_turn: int = 40
