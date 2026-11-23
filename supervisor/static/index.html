@@ -232,9 +232,70 @@
   .livestatus .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .livestatus .el { font-family: var(--mono); font-size: 11.5px; margin-left: auto; flex: none; }
   #chat { padding-bottom: 8px; }
-  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
-    border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---- activity animations: one per kind of work (see anim() in the script) ---- */
+  .anim { display: inline-block; position: relative; width: 22px; height: 16px; flex: none; vertical-align: -3px; }
+  .anim i { position: absolute; display: block; }
+  /* thinking: three dots orbiting like a comet */
+  .a-think i { width: 5px; height: 5px; border-radius: 50%; left: 8.5px; top: 5.5px; background: var(--accent);
+    animation: orbit 1.4s cubic-bezier(.5, .15, .5, .85) infinite; }
+  .a-think i:nth-child(2) { animation-delay: -.2s; opacity: .7; background: var(--purple); transform: scale(.85); }
+  .a-think i:nth-child(3) { animation-delay: -.4s; opacity: .4; }
+  .a-think.plan i { background: var(--purple); } .a-think.plan i:nth-child(2) { background: var(--accent); }
+  @keyframes orbit { from { transform: rotate(0deg) translateX(7px); } to { transform: rotate(360deg) translateX(7px); } }
+  /* running a command: a tiny terminal being typed into */
+  .a-term { border: 1.5px solid var(--ok); border-radius: 3px; width: 21px; }
+  .a-term::before { content: ""; position: absolute; left: 2px; top: 2px; width: 3px; height: 3px; border-right: 1.5px solid var(--ok);
+    border-bottom: 1.5px solid var(--ok); transform: rotate(-45deg); }
+  .a-term i, .a-doc i { height: 1.5px; left: 7px; width: 0; background: var(--ok); animation: type 2s steps(6, end) infinite; }
+  .a-term i:nth-child(1) { top: 2.5px; --w: 9px; } .a-term i:nth-child(2) { top: 6.5px; left: 2px; --w: 13px; animation-delay: .5s; }
+  .a-term i:nth-child(3) { top: 10.5px; left: 2px; --w: 7px; animation-delay: 1s; }
+  @keyframes type { 0% { width: 0; opacity: 1; } 25% { width: var(--w); } 80% { width: var(--w); opacity: 1; } 100% { width: var(--w); opacity: 0; } }
+  /* editing a file: a page with lines being written */
+  .a-doc { width: 14px; margin: 0 4px; border: 1.5px solid var(--accent); border-radius: 2px 5px 2px 2px; }
+  .a-doc i { background: var(--accent); left: 2px; }
+  .a-doc i:nth-child(1) { top: 2.5px; --w: 7px; } .a-doc i:nth-child(2) { top: 6px; --w: 5px; animation-delay: .5s; }
+  .a-doc i:nth-child(3) { top: 9.5px; --w: 7px; animation-delay: 1s; }
+  /* other tools: a turning gear */
+  .a-gear::before { content: "⚙"; position: absolute; inset: 0; text-align: center; line-height: 16px; font-size: 15px; color: var(--accent);
+    animation: spin 2.4s linear infinite; }
+  /* starting the sandbox: containers popping up in turn */
+  .a-boot i { width: 5px; height: 5px; top: 8px; border-radius: 1.5px; background: var(--accent); animation: pop 1.2s ease-in-out infinite; }
+  .a-boot i:nth-child(1) { left: 1px; } .a-boot i:nth-child(2) { left: 8.5px; animation-delay: .15s; } .a-boot i:nth-child(3) { left: 16px; animation-delay: .3s; }
+  @keyframes pop { 0%, 60%, 100% { transform: translateY(0) scale(.8); opacity: .35; } 30% { transform: translateY(-6px) scale(1); opacity: 1; } }
+  /* final review: a scan line sweeping over the work */
+  .a-scan { width: 16px; margin: 0 3px; border: 1.5px solid var(--dim); border-radius: 2px; overflow: hidden; }
+  .a-scan i:not(:last-child) { left: 2px; height: 1.5px; background: var(--border); }
+  .a-scan i:nth-child(1) { top: 3px; width: 9px; } .a-scan i:nth-child(2) { top: 7px; width: 7px; }
+  .a-scan i:last-child { left: 0; right: 0; height: 3px; background: linear-gradient(transparent, var(--ok)); box-shadow: 0 1px 4px var(--ok);
+    animation: scan 1.6s ease-in-out infinite alternate; }
+  @keyframes scan { from { top: -3px; } to { top: 11px; } }
+  /* the supervisor deciding: a radar ping */
+  .a-radar i { width: 6px; height: 6px; left: 8px; top: 5px; border-radius: 50%; background: var(--purple); }
+  .a-radar i:nth-child(2), .a-radar i:nth-child(3) { background: none; border: 1.5px solid var(--purple); animation: ping 1.6s ease-out infinite; }
+  .a-radar i:nth-child(3) { animation-delay: .8s; }
+  @keyframes ping { from { transform: scale(.6); opacity: 1; } to { transform: scale(3); opacity: 0; } }
+  /* writing a reply: typing dots */
+  .a-type i { width: 4px; height: 4px; top: 8px; border-radius: 50%; background: var(--accent); animation: bounce 1s ease-in-out infinite; }
+  .a-type i:nth-child(1) { left: 3px; } .a-type i:nth-child(2) { left: 9px; animation-delay: .15s; } .a-type i:nth-child(3) { left: 15px; animation-delay: .3s; }
+  @keyframes bounce { 0%, 60%, 100% { transform: translateY(0); opacity: .4; } 30% { transform: translateY(-4px); opacity: 1; } }
+  /* stopping: a slowly fading square */
+  .a-stop i { width: 8px; height: 8px; left: 7px; top: 4px; border-radius: 2px; background: var(--bad); animation: fade 1.4s ease-in-out infinite alternate; }
+  @keyframes fade { from { opacity: 1; } to { opacity: .2; } }
+  /* a label with light sweeping across it */
+  .shimmer { background: linear-gradient(100deg, var(--dim) 35%, var(--text) 50%, var(--dim) 65%); background-size: 250% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent; animation: shimmer 2.4s linear infinite; }
+  @keyframes shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+  /* the sidebar's "running" dot breathes; it pings faster while waiting on you */
+  .dot { position: relative; }
+  .dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: inherit; animation: ping 2s ease-out infinite; }
+  .dot.waiting::after { animation-duration: 1s; }
+  @media (prefers-reduced-motion: reduce) {
+    .anim *, .anim::before, .anim::after, .dot::after, .msg.live .body::after { animation: none !important; }
+    .a-term i, .a-doc i { width: var(--w); }
+    .shimmer { animation: none; background: none; color: var(--dim); }
+  }
   @media (max-width: 1000px) {
     #menubtn { display: inline-block; }
     .layout { grid-template-columns: 1fr; }
@@ -471,7 +532,7 @@ function renderSidebar() {
       onclick: () => { document.body.classList.remove("menu-open"); openProject(p.name); } }, name, meta, bar));
   }
   for (const name of S.state.planning) {
-    box.append(el("div", { class: "proj" }, el("div", { class: "name" }, el("span", { class: "spinner" }), name), el("div", { class: "dim", style: "font-size:12px", text: "planning..." })));
+    box.append(el("div", { class: "proj" }, el("div", { class: "name" }, anim("plan"), name), el("div", { class: "dim shimmer", style: "font-size:12px", text: "planning..." })));
   }
 }
 function renderJobChip() {
@@ -511,7 +572,7 @@ function openNew() {
     const name = $("#np-name").value.trim(), goal = $("#np-goal").value.trim();
     if (!name || !goal) return toast("Give the project a name and describe what to build.");
     $("#np-plan").disabled = true;
-    $("#np-status").replaceChildren(el("span", { class: "spinner" }), ` Planning with ${S.state.model}...`);
+    $("#np-status").replaceChildren(anim("plan"), " ", el("span", { class: "shimmer", text: `Planning with ${S.state.model}...` }));
     try {
       await api("POST", "/api/projects", { name, goal });
       await refreshState();
@@ -681,6 +742,28 @@ function addChat(r, isLive) {
   if (++S.chatCount > 1500) { chat.firstChild.remove(); S.chatCount--; }
 }
 
+// ---------- activity animations ----------
+// think | plan | term | doc | gear | boot | scan | radar | type | stop
+const ANIM_DOTS = { think: 3, plan: 3, term: 3, doc: 3, gear: 0, boot: 3, scan: 3, radar: 3, type: 3, stop: 1 };
+function anim(kind) {
+  const cls = kind === "plan" ? "a-think plan" : `a-${kind}`;
+  const n = el("span", { class: `anim ${cls}`, "aria-hidden": "true" });
+  for (let i = 0; i < (ANIM_DOTS[kind] ?? 0); i++) n.append(el("i"));
+  return n;
+}
+// Swap the animation inside `slot` only when the kind changes, so it doesn't restart every second.
+function setAnim(slot, kind) {
+  if (slot.dataset.kind === kind) return;
+  slot.dataset.kind = kind; slot.replaceChildren(anim(kind));
+}
+// Which animation fits a tool call: terminal for commands, a page for file edits.
+function toolAnim(summary) {
+  if (/^\$ /.test(summary || "")) return "term";
+  if (/^(create|str_replace|insert|edit|write|undo_edit)\b/.test(summary || "")) return "doc";
+  if (/^view\b/.test(summary || "")) return "scan";
+  return "gear";
+}
+
 // ---------- live output ----------
 // The reply the model is writing right now, updated a few times a second from
 // "stream" events. Removed when the finished message/tool call arrives.
@@ -707,7 +790,8 @@ function renderLive() {
     L.body = el("div", { class: "body" });
     L.think = el("div", { class: "lthink" });
     L.state = el("span", { class: "state" });
-    L.node = el("div", { class: "msg agent live" }, el("div", { class: "who" }, "Agent", L.state), L.think, L.body);
+    L.anim = el("span", { style: "display:inline-flex" });
+    L.node = el("div", { class: "msg agent live" }, el("div", { class: "who" }, "Agent", L.anim, L.state), L.think, L.body);
     box.prepend(L.node);
   }
   const showThinking = $("#f-thinking").checked;
@@ -717,6 +801,7 @@ function renderLive() {
   else L.think.textContent = `thinking... (${L.thinking.trim().split(/\s+/).length} words; tick "thinking" to watch)`;
   L.body.textContent = L.text;
   L.body.classList.toggle("hidden", !L.text && !!L.thinking);
+  setAnim(L.anim, L.text ? "type" : "think");
   L.state.textContent = `${L.text ? "writing" : "thinking"} · ${duration((Date.now() - L.startedAt) / 1000)}`;
   renderLiveStatus();
   scrollFeed(false);
@@ -726,26 +811,28 @@ function renderLiveStatus() {
   const box = $("#live"); if (!box) return;
   let line = $("#livestatus");
   const j = job();
-  let label = null;
+  let label = null, kind = "think";
   if (jobHere() && !j.escalation) {
-    if (j.status === "starting") label = "Starting the sandbox...";
-    else if (j.status === "stopping") label = "Stopping...";
+    if (j.status === "starting") [label, kind] = ["Starting the sandbox...", "boot"];
+    else if (j.status === "stopping") [label, kind] = ["Stopping...", "stop"];
     else if (S.live) label = null;  // the live bubble says it
-    else if (S.phase === "review" && S.lastRole !== "tool_call") label = "Final review: running checks...";
-    else if (S.lastRole === "tool_call") label = `Running ${S.lastSummary || "a tool"}...`;
-    else if (S.lastRole === "check") label = "Supervisor is deciding what's next...";
+    else if (S.phase === "review" && S.lastRole !== "tool_call") [label, kind] = ["Final review: running checks...", "scan"];
+    else if (S.lastRole === "tool_call") [label, kind] = [`Running ${S.lastSummary || "a tool"}...`, toolAnim(S.lastSummary)];
+    else if (S.lastRole === "check") [label, kind] = ["Supervisor is deciding what's next...", "radar"];
     else label = "Agent is thinking...";
   }
   if (!label) { if (line) line.remove(); return; }
   if (!line) {
-    line = el("div", { class: "livestatus", id: "livestatus" }, el("span", { class: "spinner" }), el("span", { class: "lbl" }), el("span", { class: "el" }));
+    line = el("div", { class: "livestatus", id: "livestatus" }, el("span", { class: "slot", style: "display:inline-flex" }), el("span", { class: "lbl shimmer" }), el("span", { class: "el" }));
     box.append(line);
   }
+  setAnim(line.querySelector(".slot"), kind);
   line.querySelector(".lbl").textContent = label;
   line.querySelector(".lbl").title = label;
   line.querySelector(".el").textContent = S.lastActivityAt ? duration((Date.now() - S.lastActivityAt) / 1000) : "";
 }
-setInterval(() => { if (S.view === "project" && S.tab === "chat") { if (S.live) renderLive(); else renderLiveStatus(); } }, 1000);
+// Twice a second, so the seconds counter never looks stuck.
+setInterval(() => { if (S.view === "project" && S.tab === "chat") { if (S.live) renderLive(); else renderLiveStatus(); } }, 500);
 
 // ---------- files ----------
 async function loadFiles() {
