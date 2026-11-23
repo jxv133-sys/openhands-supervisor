@@ -61,8 +61,14 @@ Then open **http://<that-machine>:8765** in a browser.
 
 ### Web interface
 
-- **New project**: name it, describe what to build (pre-filled from `goal.md`),
-  press *Plan milestones*. Your local model drafts the plan in ~30 seconds.
+- **New project**: describe what you want, roughly, and press *Shape it with
+  the assistant*. It drafts a goal and asks a few clarifying questions
+  (language, commands, where data lives, error behaviour...) with suggested
+  answers to click, or answer in your own words; skip any and it picks a
+  sensible default. Each round updates the goal on the right, which you can
+  edit at any time, until it says it's ready. Then *Plan milestones*: your
+  model drafts the plan in ~30 seconds. (*Write the goal myself* skips the
+  questions. The idea box is pre-filled from `goal.md`.)
 - **Review the plan**: edit the goal, setup commands, and each milestone's
   title, instructions, check command and notes. Reorder, add, delete, or set a
   milestone back to `pending` to redo it. *Save*.

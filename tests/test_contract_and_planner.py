@@ -87,3 +87,31 @@ def test_parse_milestone_and_draft_prompt(monkeypatch):
     assert out["check"] == "true"
     p = sent["prompt"]
     assert "Title: Add done" in p and "cargo test add" in p and "src/main.rs" in p and "Rules for checks" in p
+
+
+def test_goal_round_parsing_and_prompt(monkeypatch):
+    from supervisor import planner
+
+    out = planner.parse_goal_round(
+        '{"goal": "# Todo CLI\\n- Rust", "name": "Todo RS!", "note": "n", "ready": false, "questions": ['
+        '{"question": "Where is data stored?", "why": "w", "options": ["todos.json", "SQLite", "", "a", "b"]},'
+        '{"question": "Which language?", "options": ["Rust"]}]}',
+        asked=["Which language?"])
+    assert out["name"] == "todo-rs"
+    assert [q["question"] for q in out["questions"]] == ["Where is data stored?"]  # never re-asked
+    assert out["questions"][0]["options"] == ["todos.json", "SQLite", "a", "b"]
+    assert planner.parse_goal_round('{"goal": "g", "questions": [], "ready": false}')["ready"] is True
+    with pytest.raises(ValueError):
+        planner.parse_goal_round('{"goal": "", "questions": [], "ready": true}')
+
+    sent = {}
+
+    def fake_post(url, payload, timeout):
+        sent["prompt"] = payload["messages"][0]["content"]
+        return {"message": {"content": '{"goal": "G", "questions": [], "ready": true}'}}
+
+    monkeypatch.setattr(planner, "_post_json", fake_post)
+    planner.assist_goal("a todo app", [{"question": "Language?", "answer": "Rust"}, {"question": "Storage?", "answer": ""}],
+                        "my edited goal", "http://x", "m")
+    p = sent["prompt"]
+    assert "a todo app" in p and "A: Rust" in p and "skipped" in p and "my edited goal" in p

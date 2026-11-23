@@ -298,6 +298,21 @@ class App:
                     touched[changed] = rec.get("ts", "")
         return {"files": files, "touched": touched}
 
+    def assist_goal(self, data: dict) -> dict:
+        """One round of shaping a new project's goal: a better draft, plus
+        clarifying questions. Stateless: the page sends the whole Q&A so far."""
+        from .planner import assist_goal
+
+        idea = str(data.get("idea", "")).strip()
+        if not idea:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "describe what you want to build first")
+        answers = [a for a in (data.get("answers") or []) if isinstance(a, dict)][:40]
+        try:
+            return assist_goal(idea, answers, str(data.get("goal", "")), self.settings.ollama_url,
+                               self.settings.model, timeout=self.settings.llm_timeout)
+        except Exception as exc:
+            raise ApiError(HTTPStatus.BAD_GATEWAY, f"the assistant failed: {exc}") from exc
+
     def draft_milestone(self, name: str, data: dict) -> dict:
         """Ask the model for one new milestone (with a check command) from a
         plain description. Nothing is saved: the page adds it to the plan for
@@ -502,6 +517,8 @@ def make_handler(app: App, token: str | None):
                         raise ApiError(HTTPStatus.BAD_REQUEST, "after must be a number") from exc
                     events, last = app.bus.since(after)
                     return self._json(HTTPStatus.OK, {"events": events, "last": last})
+                if method == "POST" and route == ["goal", "assist"]:
+                    return self._json(HTTPStatus.OK, app.assist_goal(self._body()))
                 if method == "POST" and route == ["projects"]:
                     body = self._body()
                     return self._json(HTTPStatus.CREATED, app.create(str(body.get("name", "")), str(body.get("goal", ""))))

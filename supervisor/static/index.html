@@ -415,6 +415,34 @@
     font-weight: 700; font-size: 13px; color: var(--on-accent); background: var(--accent); }
   .steps b { color: var(--text); font-weight: 650; }
 
+  /* new project: conversation left, goal draft right */
+  .newp { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; max-width: 1180px; align-items: start; }
+  .newp.withgoal { grid-template-columns: minmax(0, 1fr) minmax(340px, 460px); }
+  .newtitle { font-size: 30px; font-weight: 800; letter-spacing: -.025em; margin: 0 0 4px; }
+  .lede-sm { margin: 0 0 16px; max-width: 60ch; }
+  .goalcard { position: sticky; top: 0; border-color: var(--accent-line); }
+  .goalcard textarea { font-size: 13.5px; line-height: 1.55; }
+  .readychip { color: var(--ok); border-color: var(--ok-line); margin-left: 10px; }
+  .bubble { margin: 14px 0; padding: 12px 16px 14px; border-radius: var(--r-lg); background: var(--panel); border: 1px solid var(--line-soft); }
+  .bubble.assistant { box-shadow: inset 3px 0 0 var(--accent); }
+  .bubble.you { background: transparent; border-style: dashed; margin-left: 48px; }
+  .bubble .who { font-size: 12.5px; font-weight: 650; color: var(--accent); margin-bottom: 4px; display: flex; gap: 8px; align-items: center; }
+  .bubble.you .who { color: var(--dim); }
+  .bubble .note { margin: 0 0 6px; }
+  .q { padding: 12px 0 4px; border-top: 1px solid var(--line-soft); }
+  .q:first-of-type { border-top: none; }
+  .q .qt { font-weight: 650; }
+  .q .why { font-size: 12.5px; color: var(--dim); margin-top: 1px; }
+  .opts { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 6px; }
+  .opt { border-radius: 999px; padding: 4px 12px; font-size: 13px; background: var(--bg); }
+  .opt.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .opt.on:hover:not(:disabled) { background: var(--accent); }
+  .q input { font-size: 13px; }
+  .qa { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 5px 0; font-size: 13px; }
+  .qa .a { color: var(--text); } .qa .a.skip { color: var(--faint); font-style: italic; }
+  .qa .qq { color: var(--dim); }
+  @media (max-width: 1000px) { .newp.withgoal { grid-template-columns: minmax(0, 1fr); } .goalcard { position: static; } .bubble.you { margin-left: 16px; } }
+
   /* drafting a milestone */
   .composer { border-style: dashed; border-color: var(--accent-line); background: transparent; }
   .composer textarea { min-height: 60px; }
@@ -479,21 +507,34 @@
 </template>
 
 <template id="tpl-new">
-  <div class="scroll"><div style="max-width: 760px">
-    <h2 style="margin-top:0">New project</h2>
-    <div class="card">
-      <label>Project name (folder under projects/)</label>
+  <div class="scroll"><div class="newp" id="newp">
+    <div class="convo">
+      <h2 class="newtitle">New project</h2>
+      <p class="dim lede-sm">Describe it roughly. The assistant asks what it needs to know, then writes a goal precise enough to test.</p>
+      <div class="card">
+        <label for="np-goal" style="margin-top:0">What do you want to build?</label>
+        <textarea id="np-goal" rows="3" placeholder="e.g. a todo app for the terminal"></textarea>
+        <div class="row" style="margin-top:12px;flex-wrap:wrap">
+          <button class="primary" id="ga-start" title="Ctrl+Enter">Shape it with the assistant</button>
+          <button id="np-skip">Write the goal myself</button>
+          <span class="grow"></span>
+          <button class="small hidden" id="ga-reset">Start over</button>
+        </div>
+      </div>
+      <div id="ga-thread"></div>
+    </div>
+    <div class="card goalcard hidden" id="ga-goalcard">
+      <div class="row"><h3 style="margin:0">Goal</h3><span class="chip readychip hidden" id="ga-ready">ready to plan</span></div>
+      <p class="dim" style="font-size:12.5px;margin:4px 0 8px">This is what the planner gets. Edit it freely; the assistant keeps your edits.</p>
+      <textarea id="ga-goal" rows="14"></textarea>
+      <label for="np-name">Project name (folder under projects/)</label>
       <input id="np-name" placeholder="todo-rs" autocomplete="off">
-      <label>What should be built? Be concrete: language, features, how it's used, where data lives.</label>
-      <textarea id="np-goal" rows="12" placeholder="A Rust command-line todo app with add, list, done and remove commands that stores tasks in a JSON file"></textarea>
-      <div class="row" style="margin-top:12px">
+      <div class="row" style="margin-top:12px;flex-wrap:wrap">
         <button class="primary" id="np-plan">Plan milestones</button>
-        <span class="kbd">Ctrl+Enter</span>
         <span id="np-status" class="dim"></span>
       </div>
+      <p class="dim" style="font-size:12px;margin:10px 0 0">Planning is one call to your model (about 30 seconds). You review the plan before anything runs.</p>
     </div>
-    <p class="dim">Planning is one call to your local model (about 30 seconds). You can review and edit
-      the plan before anything runs.</p>
   </div></div>
 </template>
 
@@ -709,30 +750,135 @@ function show(tplId) { $("#main").replaceChildren($(tplId).content.cloneNode(tru
 
 function openWelcome() { S.view = "welcome"; S.current = null; show("#tpl-welcome"); renderSidebar(); }
 
+// ---------- new project: shaping the goal with the assistant ----------
+// S.ga = { idea, answers: [{question, answer}], rounds: [{note, questions, answered}], goal, name, ready, started }
+const GA_KEY = "newProjectDraft";
+function gaSave() { try { localStorage.setItem(GA_KEY, JSON.stringify({ ...S.ga, goal: $("#ga-goal") ? $("#ga-goal").value : S.ga.goal, name: $("#np-name") ? $("#np-name").value : S.ga.name })); } catch (e) { /* full */ } }
+function gaLoad() { try { return JSON.parse(localStorage.getItem(GA_KEY) || "null"); } catch (e) { return null; } }
+
 function openNew() {
   if (!confirmLeave()) return;
   S.view = "new"; S.current = null; show("#tpl-new"); renderSidebar();
-  if (S.state.default_goal) $("#np-goal").value = S.state.default_goal;
-  $("#np-plan").onclick = async () => {
-    const name = $("#np-name").value.trim(), goal = $("#np-goal").value.trim();
-    if (!name || !goal) return toast("Give the project a name and describe what to build.");
-    $("#np-plan").disabled = true;
-    $("#np-status").replaceChildren(anim("plan"), " ", el("span", { class: "shimmer", text: `Planning with ${S.state.model}...` }));
-    try {
-      await api("POST", "/api/projects", { name, goal });
-      await refreshState();
-      // Planning takes a while; if you went to another project meanwhile, don't
-      // yank you away (and lose edits there). The new plan is in the sidebar.
-      if (S.view === "new") await openProject(name, true);
-      else toast(`Plan for '${name}' is ready.`, "ok");
-    } catch (e) {
-      toast(e.message);
-      if (S.view === "new" && $("#np-plan")) { $("#np-plan").disabled = false; $("#np-status").textContent = ""; }
-    }
+  S.ga = gaLoad() || { idea: "", answers: [], rounds: [], goal: "", name: "", ready: false, started: false };
+  $("#np-goal").value = S.ga.idea || S.state.default_goal || "";
+  $("#ga-goal").value = S.ga.goal || ""; $("#np-name").value = S.ga.name || "";
+  $("#ga-start").onclick = () => gaStart();
+  $("#np-skip").onclick = () => {
+    const idea = $("#np-goal").value.trim();
+    S.ga.started = true; if (!$("#ga-goal").value.trim()) $("#ga-goal").value = idea;
+    gaRender(); $("#ga-goal").focus();
   };
-  const submit = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $("#np-plan").click(); } };
-  $("#np-goal").onkeydown = submit; $("#np-name").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); $("#np-goal").focus(); } else submit(e); };
-  $("#np-name").focus();
+  $("#ga-reset").onclick = () => {
+    if (!confirm("Start over? The questions and the goal draft are cleared.")) return;
+    localStorage.removeItem(GA_KEY); S.ga = null; openNew();
+  };
+  $("#np-goal").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); gaStart(); } };
+  for (const id of ["#np-goal", "#ga-goal", "#np-name"]) $(id).addEventListener("input", () => { S.ga.idea = $("#np-goal").value; gaSave(); });
+  $("#np-plan").onclick = planNew;
+  gaRender();
+  $("#np-goal").focus();
+}
+
+function gaRender() {
+  const g = S.ga, wrap = $("#newp"); if (!wrap) return;
+  wrap.classList.toggle("withgoal", !!g.started);
+  $("#ga-goalcard").classList.toggle("hidden", !g.started);
+  $("#ga-ready").classList.toggle("hidden", !g.ready);
+  $("#ga-reset").classList.toggle("hidden", !g.started);
+  $("#ga-start").textContent = g.rounds.length ? "Ask again with this idea" : "Shape it with the assistant";
+  const thread = $("#ga-thread"); thread.replaceChildren();
+  g.rounds.forEach((round, ri) => {
+    const last = ri === g.rounds.length - 1;
+    const bubble = el("div", { class: "bubble assistant" }, el("div", { class: "who", text: "Assistant" }),
+      round.note ? el("p", { class: "note", text: round.note }) : null);
+    if (round.answered || !last) {
+      for (const qa of round.answered || []) bubble.append(el("div", { class: "qa" }, el("span", { class: "qq", text: qa.question }),
+        el("span", { class: "a" + (qa.answer ? "" : " skip"), text: qa.answer || "skipped (assistant picks a default)" })));
+      if (round.extra) bubble.append(el("div", { class: "qa" }, el("span", { class: "qq", text: "You added" }), el("span", { class: "a", text: round.extra })));
+    } else {
+      bubble.append(...round.questions.map((q, qi) => gaQuestion(q, qi)));
+      if (!round.questions.length) bubble.append(el("p", { class: "dim", style: "margin:4px 0 0", text: g.ready
+        ? "Nothing important is open. Plan it, edit the goal, or tell me anything else below." : "Tell me anything else below." }));
+      const extra = el("input", { id: "ga-extra", placeholder: "Anything else to add or change? (optional)" });
+      extra.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); gaSend(); } };
+      bubble.append(el("div", { style: "margin-top:12px" }, extra),
+        el("div", { class: "row", style: "margin-top:10px;flex-wrap:wrap" },
+          el("button", { class: "primary", id: "ga-send", text: round.questions.length ? "Send answers" : "Send", onclick: gaSend }),
+          round.questions.length ? el("span", { class: "dim", style: "font-size:12.5px", text: "Unanswered questions are left to the assistant." }) : null));
+    }
+    thread.append(bubble);
+  });
+}
+function gaQuestion(q, qi) {
+  const input = el("input", { placeholder: "Or answer in your own words", "data-q": String(qi) });
+  const opts = el("div", { class: "opts" }, ...q.options.map((o, oi) => el("button", { class: "opt", text: o + (oi === 0 && q.options.length > 1 ? "" : ""),
+    title: oi === 0 ? "Suggested" : "", onclick: (e) => {
+      const on = !e.target.classList.contains("on");
+      opts.querySelectorAll(".opt").forEach(b => b.classList.remove("on"));
+      e.target.classList.toggle("on", on); input.value = on ? o : "";
+    } })));
+  input.oninput = () => opts.querySelectorAll(".opt").forEach(b => b.classList.toggle("on", b.textContent === input.value));
+  input.onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); gaSend(); } };
+  return el("div", { class: "q" }, el("div", { class: "qt", text: q.question }), q.why ? el("div", { class: "why", text: q.why }) : null, opts, input);
+}
+// Ask the assistant for a (better) goal draft and the next questions.
+async function gaAsk(waitText) {
+  const g = S.ga;
+  const thinking = el("div", { class: "bubble assistant" }, el("div", { class: "who" }, "Assistant", anim("think")),
+    el("span", { class: "shimmer", text: waitText }));
+  $("#ga-thread").append(thinking);
+  thinking.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  for (const b of document.querySelectorAll("#ga-start, #ga-send, #np-plan")) b.disabled = true;
+  try {
+    const out = await api("POST", "/api/goal/assist", { idea: g.idea, answers: g.answers, goal: $("#ga-goal").value });
+    if (S.view !== "new") return;
+    g.started = true; g.goal = out.goal; g.ready = out.ready;
+    g.rounds.push({ note: out.note, questions: out.questions });
+    $("#ga-goal").value = out.goal;
+    if (!$("#np-name").value.trim() && out.name) $("#np-name").value = out.name;
+    gaSave(); gaRender();
+    const lastBubble = $("#ga-thread").lastElementChild;
+    if (lastBubble) lastBubble.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (e) { toast(e.message); thinking.remove(); }
+  finally { for (const b of document.querySelectorAll("#ga-start, #ga-send, #np-plan")) b.disabled = false; }
+}
+function gaStart() {
+  const idea = $("#np-goal").value.trim();
+  if (!idea) { $("#np-goal").focus(); return toast("Describe what you want to build first, even roughly."); }
+  if (S.ga.rounds.length && idea !== S.ga.idea && !confirm("Start a new conversation with this idea? The current questions are cleared (your goal draft stays).")) return;
+  if (idea !== S.ga.idea || !S.ga.rounds.length) { S.ga.answers = []; S.ga.rounds = []; }
+  S.ga.idea = idea;
+  gaAsk("Reading your idea...");
+}
+function gaSend() {
+  const g = S.ga, round = g.rounds[g.rounds.length - 1]; if (!round) return;
+  const answered = round.questions.map((q, qi) => ({ question: q.question, answer: (document.querySelector(`#ga-thread input[data-q="${qi}"]`) || {}).value?.trim() || "" }));
+  const extra = ($("#ga-extra") || {}).value?.trim() || "";
+  round.answered = answered; round.extra = extra;
+  g.answers.push(...answered);
+  if (extra) g.answers.push({ question: "Anything else to add or change?", answer: extra });
+  gaRender();
+  gaAsk(answered.some(a => a.answer) || extra ? "Updating the goal with your answers..." : "Choosing sensible defaults...");
+}
+
+async function planNew() {
+  const name = $("#np-name").value.trim(), goal = $("#ga-goal").value.trim();
+  if (!goal) return toast("The goal is empty. Write it, or let the assistant draft it.");
+  if (!name) { $("#np-name").focus(); return toast("Give the project a folder name."); }
+  $("#np-plan").disabled = true;
+  $("#np-status").replaceChildren(anim("plan"), " ", el("span", { class: "shimmer", text: `Planning with ${S.state.model}...` }));
+  try {
+    await api("POST", "/api/projects", { name, goal });
+    localStorage.removeItem(GA_KEY);
+    await refreshState();
+    // Planning takes a while; if you went to another project meanwhile, don't
+    // yank you away (and lose edits there). The new plan is in the sidebar.
+    if (S.view === "new") await openProject(name, true);
+    else toast(`Plan for '${name}' is ready.`, "ok");
+  } catch (e) {
+    toast(e.message);
+    if (S.view === "new" && $("#np-plan")) { $("#np-plan").disabled = false; $("#np-status").textContent = ""; }
+  }
 }
 
 async function openProject(name, skipConfirm = false) {

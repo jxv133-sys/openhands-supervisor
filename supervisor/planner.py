@@ -191,3 +191,116 @@ def parse_milestone(text: str) -> dict:
     if not out["check"]:
         raise ValueError("model returned no check command")
     return out
+
+
+# --- shaping the goal with the user ----------------------------------------------
+
+GOAL_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "goal": {"type": "string"},
+        "name": {"type": "string"},
+        "note": {"type": "string"},
+        "ready": {"type": "boolean"},
+        "questions": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string"},
+                    "why": {"type": "string"},
+                    "options": {"type": "array", "items": {"type": "string"}},
+                },
+                "required": ["question", "options"],
+            },
+        },
+    },
+    "required": ["goal", "questions", "ready"],
+}
+
+GOAL_PROMPT = """You help a user turn a rough idea into a precise goal for a coding agent. The agent
+runs a local model in a Linux (Debian) sandbox. The goal will be split into small milestones,
+each proven done by an automated command (usually tests), so the goal must be concrete and
+testable: vague goals produce vague programs.
+
+The user mostly builds Rust and Python projects. Suggest one of those unless they say otherwise.
+
+Each time, return:
+- "goal": the best goal you can write from everything known so far, in Markdown: a one-line
+  summary, then short sections or bullets for: language and how it's run (CLI with exact
+  commands, library API, service...), each feature with its exact inputs and outputs, where
+  data is stored and in what format, error behaviour (bad input, missing files...), and what
+  is out of scope. Use the user's answers exactly. Where something is still unknown, choose a
+  sensible, simple default and say so in the goal (e.g. "Data: todos.json in the current
+  directory (assumed)"). No code.
+- "questions": at most 4 questions whose answers would really change what gets built, most
+  important first. Never ask what the idea or earlier answers already settle. Each has 2-4
+  short "options" (recommended first) and a short "why". Return [] when nothing important is open.
+- "ready": true when the goal is concrete enough to plan and test.
+- "note": one short sentence to the user about this round (what changed, or that it's ready).
+- "name": a short project folder name (lowercase, hyphens), e.g. "todo-rs".
+
+The user's idea:
+{idea}
+
+{history}
+Reply with JSON only."""
+
+
+def assist_goal(idea: str, answers: list[dict], current_goal: str, ollama_url: str, model: str,
+                timeout: float = 900) -> dict:
+    """One round of shaping the goal: an updated draft plus clarifying questions.
+    `answers` is every question asked so far with the user's answer ("" = skipped)."""
+    parts = []
+    if answers:
+        lines = []
+        for qa in answers:
+            answer = str(qa.get("answer", "")).strip() or "(skipped: choose a sensible default)"
+            lines.append(f"Q: {qa.get('question', '')}\nA: {answer}")
+        parts.append("Questions asked so far, with the user's answers:\n" + "\n\n".join(lines))
+    if current_goal.strip():
+        parts.append("The current goal draft (the user may have edited it; keep their edits):\n" + current_goal.strip())
+    prompt = GOAL_PROMPT.format(idea=idea.strip(), history="\n\n".join(parts) + ("\n\n" if parts else ""))
+    response = _post_json(
+        ollama_url.rstrip("/") + "/api/chat",
+        {
+            "model": model,
+            "stream": False,
+            "think": False,
+            "format": GOAL_SCHEMA,
+            "options": {"temperature": 0.4},
+            "messages": [{"role": "user", "content": prompt}],
+        },
+        timeout,
+    )
+    return parse_goal_round(response["message"]["content"], asked=[qa.get("question", "") for qa in answers])
+
+
+def parse_goal_round(text: str, asked: list[str] = ()) -> dict:
+    text = re.sub(r"<think>.*?</think>", "", text or "", flags=re.DOTALL).strip()
+    match = re.search(r"\{.*\}", text, flags=re.DOTALL)
+    if not match:
+        raise ValueError(f"model returned no JSON object: {text[:300]!r}")
+    data = json.loads(match.group(0))
+    goal = str(data.get("goal", "") or "").strip()
+    if not goal:
+        raise ValueError("model returned no goal")
+    seen = {q.strip().lower() for q in asked if q}
+    questions = []
+    for q in data.get("questions") or []:
+        if not isinstance(q, dict):
+            continue
+        text_q = str(q.get("question", "")).strip()
+        if not text_q or text_q.lower() in seen:  # never ask the same thing twice
+            continue
+        seen.add(text_q.lower())
+        options = [str(o).strip() for o in (q.get("options") or []) if str(o).strip()][:4]
+        questions.append({"question": text_q, "why": str(q.get("why", "") or "").strip(), "options": options})
+    name = re.sub(r"[^a-z0-9._-]+", "-", str(data.get("name", "") or "").lower()).strip("-.")[:40]
+    return {
+        "goal": goal,
+        "questions": questions[:4],
+        "ready": bool(data.get("ready")) or not questions,
+        "note": str(data.get("note", "") or "").strip(),
+        "name": name,
+    }
