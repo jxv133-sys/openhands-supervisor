@@ -286,6 +286,14 @@ class App:
                     touched[changed] = rec.get("ts", "")
         return {"files": files, "touched": touched}
 
+    def stats(self, name: str) -> dict:
+        from . import stats
+
+        path = self._require_contract(name)
+        data = stats.compute(Contract.load(path), RunLog(path, echo=False).read_all())
+        data["max_input_tokens"] = self.settings.max_input_tokens
+        return data
+
     def file(self, name: str, rel: str) -> dict:
         root = self._require_contract(name).resolve()
         target = (root / rel).resolve()
@@ -456,6 +464,8 @@ def make_handler(app: App, token: str | None):
                     return self._json(HTTPStatus.OK, app.start(route[1]))
                 if method == "GET" and len(route) == 3 and route[0] == "projects" and route[2] == "files":
                     return self._json(HTTPStatus.OK, app.files(route[1]))
+                if method == "GET" and len(route) == 3 and route[0] == "projects" and route[2] == "stats":
+                    return self._json(HTTPStatus.OK, app.stats(route[1]))
                 if method == "GET" and len(route) == 3 and route[0] == "projects" and route[2] == "file":
                     rel = (parse_qs(url.query).get("path") or [""])[0]
                     return self._json(HTTPStatus.OK, app.file(route[1], rel))

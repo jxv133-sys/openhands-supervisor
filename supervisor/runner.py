@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import shlex
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -194,6 +195,8 @@ class Supervisor:
             try:
                 while True:  # one iteration per turn
                     before = progress.snapshot(self.project_dir)
+                    tokens_before = _token_usage(conversation)
+                    started = time.monotonic()
                     collector.reset()
                     conversation.send_message(message)
                     exception = ""
@@ -208,7 +211,11 @@ class Supervisor:
                     status = _status_of(conversation)
                     changed = progress.changed_files(before, progress.snapshot(self.project_dir))
                     report = collector.report(status, exception, changed_files=len(changed))
+                    agent_seconds = time.monotonic() - started
+                    tokens = _token_usage(conversation)
+                    check_started = time.monotonic()
                     check = self._exec(workspace, milestone.check, self.settings.check_timeout)
+                    check_seconds = time.monotonic() - check_started
                     decision = decide(report, check, milestone.check, state, limits)
                     self.log.chat(
                         {
@@ -238,6 +245,11 @@ class Supervisor:
                         reason=decision.reason,
                         agent_text=report.agent_text[:2000],
                         error=report.error,
+                        duration=round(agent_seconds, 1),
+                        check_seconds=round(check_seconds, 1),
+                        prompt_tokens=max(0, tokens["prompt"] - tokens_before["prompt"]),
+                        completion_tokens=max(0, tokens["completion"] - tokens_before["completion"]),
+                        context_tokens=tokens["context"],
                     )
                     self.log.say(
                         f"turn ended: {report.end.value}, {report.actions} actions, "
@@ -345,6 +357,27 @@ class Supervisor:
                 return "skip", ""
             if answer:
                 return "guidance", answer
+
+
+def _token_usage(conversation) -> dict:
+    """Cumulative LLM tokens of this conversation so far (best effort: zeros if
+    the SDK doesn't report them). `context` is the size of the latest prompt."""
+    try:
+        metrics = conversation.conversation_stats.get_combined_metrics()
+        usage, latest = metrics.accumulated_token_usage, metrics.token_usages
+    except Exception:
+        return {"prompt": 0, "completion": 0, "context": 0}
+    context = 0
+    try:
+        if latest:
+            context = int(getattr(latest[-1], "prompt_tokens", 0) or 0)
+    except Exception:
+        pass
+    return {
+        "prompt": int(getattr(usage, "prompt_tokens", 0) or 0),
+        "completion": int(getattr(usage, "completion_tokens", 0) or 0),
+        "context": context,
+    }
 
 
 def _status_of(conversation) -> str:

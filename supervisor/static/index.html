@@ -170,6 +170,44 @@
   .feedwrap { position: relative; }
   .kbd { font-family: var(--mono); font-size: 11px; border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; color: var(--dim); }
   #menubtn { display: none; padding: 2px 9px; }
+
+  /* stats (single series = --series-1; status colors always come with a glyph) */
+  :root { --series-1: #3987e5; --good: #0ca30c; --warning: #fab219; --critical: #d03b3b; --grid: #262b36; }
+  #stats { padding: 16px 20px 40px; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 18px; }
+  .tile { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+  .tile .k { font-size: 11.5px; color: var(--dim); }
+  .tile .v { font-size: 22px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .s { font-size: 11.5px; color: var(--dim); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .meter { height: 6px; border-radius: 3px; background: #1d3555; margin-top: 6px; overflow: hidden; }
+  .meter > div { height: 100%; background: var(--series-1); border-radius: 3px; }
+  .meter.hot > div { background: var(--warning); }
+  .sec { margin: 22px 0 8px; display: flex; align-items: baseline; gap: 10px; }
+  .sec h4 { margin: 0; font-size: 13.5px; }
+  .sec .dim { font-size: 12px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 24px; }
+  .hb { display: grid; grid-template-columns: minmax(90px, 42%) 1fr auto; gap: 8px; align-items: center; font-size: 12.5px; padding: 3px 0; }
+  .hb .lbl { overflow-wrap: anywhere; line-height: 1.3; }
+  .hb .trk { height: 10px; }
+  .hb .fill { height: 10px; background: var(--series-1); border-radius: 0 4px 4px 0; min-width: 2px; }
+  .hb .num { color: var(--text); font-variant-numeric: tabular-nums; min-width: 2.5em; text-align: right; }
+  table.mt { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+  table.mt th { text-align: right; color: var(--dim); font-weight: 600; font-size: 11.5px; padding: 4px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  table.mt td { text-align: right; padding: 5px 6px; border-bottom: 1px solid #20242d; white-space: nowrap; }
+  table.mt th:nth-child(2), table.mt td:nth-child(2), table.mt th:nth-child(3), table.mt td:nth-child(3) { text-align: left; }
+  table.mt td.title { white-space: normal; min-width: 120px; }
+  table.mt .tbar { display: inline-block; height: 8px; background: var(--series-1); border-radius: 0 4px 4px 0; vertical-align: middle; margin-right: 6px; }
+  .st-ok { color: var(--good); } .st-warn { color: var(--warning); } .st-bad { color: var(--critical); }
+  .tl { position: relative; }
+  .tl svg { display: block; width: 100%; overflow: visible; }
+  .tl text { fill: var(--dim); font-size: 10.5px; font-family: var(--mono); }
+  .tl .bar { fill: var(--series-1); }
+  .tl .hit:hover + .bar, .tl .bar.hl { fill: #6da7ec; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--dim); margin-top: 6px; }
+  .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--series-1); vertical-align: -1px; margin-right: 5px; }
+  .tip { position: absolute; pointer-events: none; z-index: 10; background: #0b0d11; border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 9px; font-size: 12px; max-width: 320px; box-shadow: 0 6px 20px #000a; white-space: normal; }
+  .tip b { font-weight: 650; } .tip .dim { font-size: 11.5px; }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--border);
     border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: -2px; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -179,9 +217,12 @@
     /* the sidebar becomes a slide-over opened with the menu button */
     aside { display: none; position: fixed; top: 48px; left: 0; bottom: 0; width: 280px; z-index: 20; box-shadow: 4px 0 24px #000a; }
     body.menu-open aside { display: block; }
-    .project { grid-template-columns: 1fr; grid-template-rows: auto; overflow-y: auto; }
-    .project > .scroll:first-child { border-right: none; border-bottom: 1px solid var(--border); overflow: visible; }
-    .feedwrap { height: 75vh; }
+    /* stack the plan above the tabs; the whole page column scrolls */
+    .project { display: block; overflow-y: auto; }
+    .project > .scroll:first-child { border-right: none; border-bottom: 1px solid var(--border); overflow: visible; min-height: auto; }
+    .feedwrap { height: 85vh; min-height: 0; }
+    .feedhead { padding: 8px 12px; flex-wrap: wrap; }
+    #stats, #chat, #feed { padding-left: 12px; padding-right: 12px; }
     .files { grid-template-columns: 1fr; grid-template-rows: 30% minmax(0, 1fr); }
     .filelist { border-right: none; border-bottom: 1px solid var(--border); }
     #model { display: none; }
@@ -281,6 +322,7 @@
           <button class="tab" data-tab="chat">Chat<span class="count hidden" id="n-chat"></span></button>
           <button class="tab" data-tab="activity">Activity</button>
           <button class="tab" data-tab="files">Files<span class="count hidden" id="n-files"></span></button>
+          <button class="tab" data-tab="stats">Stats</button>
         </div>
         <span class="grow"></span>
         <label id="opt-thinking"><input type="checkbox" id="f-thinking"> thinking</label>
@@ -289,6 +331,7 @@
       </div>
       <div class="pane" id="pane-chat"><div id="chat"></div></div>
       <div class="pane hidden" id="pane-activity"><div id="feed"></div></div>
+      <div class="pane hidden" id="pane-stats"><div id="stats"></div></div>
       <button class="jump hidden" id="jump">↓ Latest</button>
       <div class="pane hidden" id="pane-files" style="overflow:hidden">
         <div class="files">
@@ -497,7 +540,7 @@ async function openProject(name, skipConfirm = false) {
   $("#chat").replaceChildren(); S.calls = new Map(); S.chatCount = 0;
   for (const rec of S.project.chat) addChat(rec);
   if (!S.project.chat.length) $("#chat").append(el("div", { class: "dim", style: "margin-top:20px", text: "The agent's conversation shows up here once a run starts." }));
-  S.files = null; S.openFile = null;
+  S.files = null; S.openFile = null; S.stats = null;
   switchTab(localStorage.getItem("tab") || "chat");
   scrollFeed(true);
 }
@@ -506,9 +549,10 @@ async function openProject(name, skipConfirm = false) {
 function switchTab(name) {
   S.tab = name; localStorage.setItem("tab", name);
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
-  for (const t of ["chat", "activity", "files"]) $(`#pane-${t}`).classList.toggle("hidden", t !== name);
+  for (const t of ["chat", "activity", "files", "stats"]) $(`#pane-${t}`).classList.toggle("hidden", t !== name);
   $("#opt-thinking").classList.toggle("hidden", name !== "chat");
-  $("#opt-follow").classList.toggle("hidden", name === "files");
+  $("#opt-follow").classList.toggle("hidden", name === "files" || name === "stats");
+  if (name === "stats") loadStats();
   $("#opt-changed").classList.toggle("hidden", name !== "files");
   if (name === "chat") { S.unreadChat = 0; badge("#n-chat", 0); }
   if (name === "files") { S.unreadFiles = 0; badge("#n-files", 0); loadFiles(); }
@@ -516,7 +560,7 @@ function switchTab(name) {
 }
 function renderJump() {
   const b = $("#jump"); if (!b) return;
-  b.classList.toggle("hidden", S.tab === "files" || $("#f-follow").checked);
+  b.classList.toggle("hidden", S.tab === "files" || S.tab === "stats" || $("#f-follow").checked);
 }
 function badge(sel, n) { const b = $(sel); if (!b) return; b.textContent = n > 99 ? "99+" : String(n); b.classList.toggle("hidden", !n); }
 
@@ -653,6 +697,153 @@ async function openFile(path, keepScroll) {
     renderFileList();
   } catch (e) { toast(e.message); }
 }
+
+// ---------- stats ----------
+const svg = (tag, attrs = {}) => { const n = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); return n; };
+const fmtN = (n) => n == null ? "—" : n >= 1e6 ? `${(n / 1e6).toFixed(n >= 1e7 ? 0 : 1)}M` : n >= 1e4 ? `${Math.round(n / 1e3)}K` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : String(n);
+// seconds only matter for short spans: "45s", "3m 20s", "16m", "2h 51m"
+const fmtT = (s) => s == null ? "—" : s < 60 ? `${Math.round(s)}s` : s < 600 ? duration(s) : duration(s).replace(/ \d+s$/, "");
+const DECISION = { done: ["✓", "st-ok", "milestone done"], restart: ["↻", "st-warn", "restarted fresh"], escalate: ["!", "st-bad", "asked you"] };
+const STATUS = { done: ["✓", "st-ok", "done"], skipped: ["⤼", "st-warn", "skipped"], pending: ["○", "dim", "pending"] };
+
+async function loadStats() {
+  if (S.view !== "project" || S.tab !== "stats") return;
+  const name = S.current;
+  try {
+    const data = await api("GET", `/api/projects/${encodeURIComponent(name)}/stats`);
+    if (name !== S.current || S.tab !== "stats") return;
+    S.stats = data; renderStats();
+  } catch (e) { toast(e.message); }
+}
+function tile(k, v, sub, extra) {
+  return el("div", { class: "tile" }, el("div", { class: "k", text: k }), el("div", { class: "v", text: v, title: v }), sub ? el("div", { class: "s", text: sub, title: sub }) : null, extra || null);
+}
+function hbars(rows, fmt = String) {
+  const max = Math.max(1, ...rows.map(r => r[1]));
+  if (!rows.length) return el("div", { class: "dim", style: "font-size:12px", text: "Nothing yet." });
+  return el("div", {}, ...rows.map(([label, n, title]) => el("div", { class: "hb", title: title || label },
+    el("span", { class: "lbl", text: label }),
+    el("div", { class: "trk" }, el("div", { class: "fill", style: `width:${100 * n / max}%` })),
+    el("span", { class: "num", text: fmt(n) }))));
+}
+function section(title, note, ...kids) {
+  return el("div", {}, el("div", { class: "sec" }, el("h4", { text: title }), note ? el("span", { class: "dim", text: note }) : null), ...kids);
+}
+function renderStats() {
+  const box = $("#stats"); if (!box || !S.stats) return;
+  const st = S.stats, t = st.totals;
+  if (!t.turns && !t.escalations) {
+    box.replaceChildren(el("div", { class: "welcome", style: "margin:40px auto", text: "No stats yet. They fill in as the agent works: every turn adds time, actions, check results and tokens." }));
+    return;
+  }
+  const j = job(); const live = jobHere();
+  const pct = t.turns ? Math.round(100 * t.checks_passed / t.turns) : 0;
+  const tokens = t.prompt_tokens == null ? null : t.prompt_tokens + t.completion_tokens;
+  const ctxPct = t.max_context && st.max_input_tokens ? Math.min(100, 100 * t.max_context / st.max_input_tokens) : null;
+  const kpis = el("div", { class: "kpis" },
+    tile("Milestones", `${t.milestones_done}/${t.milestones_total}`, [t.milestones_skipped ? `${t.milestones_skipped} skipped` : "", live ? "running now" : ""].filter(Boolean).join(" · ") || "done",
+      el("div", { class: "meter" }, el("div", { style: `width:${100 * t.milestones_done / Math.max(1, t.milestones_total)}%` }))),
+    tile("Working time", fmtT(t.seconds), t.agent_seconds ? `agent ${fmtT(t.agent_seconds)} · checks ${fmtT(t.check_seconds)}` : "from log timestamps"),
+    tile("Turns", String(t.turns), t.actions_per_turn != null ? `${t.actions_per_turn} actions per turn` : ""),
+    tile("Agent actions", fmtN(t.actions), "tool calls"),
+    tile("Check pass rate", `${pct}%`, `${t.checks_passed} passed · ${t.checks_failed} failed`),
+    tile("Restarts", String(t.restarts), "fresh conversations"),
+    tile("Needed you", String(t.escalations), `${t.guidance} hint${t.guidance === 1 ? "" : "s"} · ${t.skips} skipped`),
+    tile("Files changed", String(t.files_changed), "distinct files"),
+    tile("Tokens", fmtN(tokens), tokens == null ? "not recorded (older runs)" : `${fmtN(t.prompt_tokens)} in · ${fmtN(t.completion_tokens)} out`),
+    tile("Peak context", t.max_context ? fmtN(t.max_context) : "—", st.max_input_tokens ? `of ${fmtN(st.max_input_tokens)} max input` : "",
+      ctxPct == null ? null : el("div", { class: "meter" + (ctxPct > 85 ? " hot" : ""), title: `${Math.round(ctxPct)}% of max_input_tokens` }, el("div", { style: `width:${ctxPct}%` }))));
+
+  // per-milestone table
+  const maxSec = Math.max(1, ...st.milestones.map(m => m.seconds));
+  const cur = live ? (j.milestone || 0) : 0;
+  const table = el("table", { class: "mt" },
+    el("thead", {}, el("tr", {}, ...["#", "Milestone", "Status", "Time", "Turns", "Actions", "Restarts", "Needed you", "Files", "Tokens"].map(h => el("th", { text: h })))),
+    el("tbody", {}, ...st.milestones.map(m => {
+      const [g, cls, label] = m.n === cur && m.status === "pending" ? ["▶", "", "in progress"] : (STATUS[m.status] || ["", "", m.status]);
+      return el("tr", {},
+        el("td", { class: "dim", text: String(m.n) }),
+        el("td", { class: "title", text: m.title }),
+        el("td", {}, el("span", { class: cls, text: g }), ` ${label}`),
+        el("td", { title: m.first_turn_ts ? `${m.first_turn_ts.replace("T", " ")} → ${m.last_turn_ts.replace("T", " ")}` : "" },
+          el("span", { class: "tbar", style: `width:${Math.round(60 * m.seconds / maxSec)}px` }), m.turns ? fmtT(m.seconds) : "—"),
+        el("td", { text: m.turns ? String(m.turns) : "—" }),
+        el("td", { text: m.turns ? String(m.actions) : "—" }),
+        el("td", { text: m.restarts ? String(m.restarts) : "—" }),
+        el("td", { text: m.escalations ? `${m.escalations}${m.guidance ? ` (${m.guidance} hint${m.guidance === 1 ? "" : "s"})` : ""}` : "—" }),
+        el("td", { text: m.files ? String(m.files) : "—" }),
+        el("td", { text: m.tokens ? fmtN(m.tokens) : "—" }));
+    })));
+
+  const fileRows = st.files.map(([f, n]) => [f, n]);
+  const filesList = hbars(fileRows);
+  filesList.querySelectorAll(".hb .lbl").forEach((n, i) => { n.style.cursor = "pointer"; n.style.color = "var(--accent)"; n.onclick = () => { switchTab("files"); openFile(st.files[i][0]); }; });
+
+  box.replaceChildren(kpis,
+    section("Turn timeline", st.turns_omitted ? `latest ${st.turns.length} turns` : "every turn, oldest to newest", el("div", { class: "tl", id: "tl" })),
+    section("Milestones", "", el("div", { style: "overflow-x:auto" }, table)),
+    el("div", { class: "grid2" },
+      section("Why the supervisor stepped in", "per turn", hbars(st.interventions.map(([r, n]) => [r.replace(/^(\w+): /, (m, d) => ({ nudge: "Nudged: ", restart: "Restarted: ", escalate: "Asked you: " }[d] || m)), n]))),
+      section("How turns ended", "", hbars(st.ends.map(([e, n]) => [{ finished: "agent said finished", message: "agent replied / stopped", iter_cap: "hit action cap", stuck: "stuck (looping)", error: "error" }[e] || e, n]))),
+      section("Tools the agent used", "calls", hbars(st.tools, fmtN)),
+      section("Most-changed files", "turns that changed it", filesList)));
+  renderTimeline();
+}
+function renderTimeline() {
+  const host = $("#tl"); if (!host || !S.stats) return;
+  const turns = S.stats.turns;
+  if (!turns.length) { host.replaceChildren(el("div", { class: "dim", style: "font-size:12px", text: "No turns yet." })); return; }
+  const W = Math.max(280, host.clientWidth || 600), H = 150, top = 16, base = top + 110, padL = 26;
+  const groups = turns.map((tr, i) => i === 0 || tr.milestone !== turns[i - 1].milestone);
+  const gapW = 8, nGaps = groups.filter(Boolean).length - 1;
+  const slot = Math.min(22, (W - padL - nGaps * gapW) / turns.length);
+  const bw = Math.max(1, slot - (slot > 4 ? 2 : 0.5));  // 2px surface gap between bars
+  const maxA = Math.max(1, ...turns.map(tr => tr.actions));
+  const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Agent actions per turn" });
+  // recessive grid + axis labels
+  for (const v of [0, Math.round(maxA / 2), maxA]) {
+    const y = base - (base - top) * v / maxA;
+    s.append(svg("line", { x1: padL, x2: W, y1: y, y2: y, stroke: "var(--grid)", "stroke-width": 1 }));
+    const tx = svg("text", { x: padL - 5, y: y + 3.5, "text-anchor": "end" }); tx.textContent = String(v); s.append(tx);
+  }
+  const tip = el("div", { class: "tip hidden" });
+  let x = padL;
+  turns.forEach((tr, i) => {
+    if (groups[i]) {
+      if (i) { x += gapW; s.append(svg("line", { x1: x - gapW / 2 - 1, x2: x - gapW / 2 - 1, y1: top - 10, y2: base + 18, stroke: "var(--border)", "stroke-dasharray": "2 3" })); }
+      const lab = svg("text", { x: x, y: top - 6 }); lab.textContent = `M${tr.milestone}`; s.append(lab);
+    }
+    const h = Math.max(tr.actions ? 2 : 0, (base - top) * tr.actions / maxA), y = base - h, r = Math.min(4, bw / 2, h);
+    const hit = svg("rect", { class: "hit", x: x - 1, y: top - 4, width: slot + 1, height: base - top + 24, fill: "transparent" });
+    const bar = svg("path", { class: "bar", d: h ? `M${x},${base}V${y + r}Q${x},${y} ${x + r},${y}H${x + bw - r}Q${x + bw},${y} ${x + bw},${y + r}V${base}Z` : "" });
+    s.append(hit, bar);
+    const d = DECISION[tr.decision];
+    if (d && slot >= 5) {
+      const g = svg("text", { x: x + bw / 2, y: base + 13, "text-anchor": "middle", class: d[1], style: `fill:currentColor;font-size:${slot >= 9 ? 11 : 9}px;font-weight:700` });
+      g.textContent = d[0]; s.append(g);
+    }
+    hit.addEventListener("mousemove", (e) => {
+      const rect = host.getBoundingClientRect();
+      tip.replaceChildren(
+        el("div", {}, el("b", { text: `Milestone ${tr.milestone}` }), el("span", { class: "dim", text: `  ${(tr.ts || "").replace("T", " ")}` })),
+        el("div", { text: `${tr.actions} actions · ${tr.changed} file${tr.changed === 1 ? "" : "s"} changed` + (tr.seconds != null ? ` · ${fmtT(tr.seconds)}` : "") + (tr.tokens != null ? ` · ${fmtN(tr.tokens)} tokens` : "") }),
+        el("div", {}, el("span", { class: tr.passed ? "st-ok" : "st-bad", text: tr.passed ? "✓ check passed" : "✗ check failed" }), ` · ${tr.decision}${tr.end ? ` (turn ${tr.end})` : ""}`),
+        tr.reason ? el("div", { class: "dim", text: tr.reason }) : null);
+      tip.classList.remove("hidden");
+      const left = Math.min(e.clientX - rect.left + 12, rect.width - 330);
+      tip.style.left = `${Math.max(0, left)}px`; tip.style.top = `${e.clientY - rect.top + 14}px`;
+      bar.classList.add("hl");
+    });
+    hit.addEventListener("mouseleave", () => { tip.classList.add("hidden"); bar.classList.remove("hl"); });
+    x += slot;
+  });
+  const legend = el("div", { class: "legend" },
+    el("span", {}, el("span", { class: "sw" }), "agent actions per turn"),
+    ...Object.values(DECISION).map(([g, cls, label]) => el("span", {}, el("b", { class: cls, text: g }), ` ${label}`)),
+    el("span", { text: "unmarked = nudged to keep going" }));
+  host.replaceChildren(s, tip, legend);
+}
+window.addEventListener("resize", () => { clearTimeout(S.resizeT); S.resizeT = setTimeout(() => { if (S.tab === "stats") renderTimeline(); }, 150); });
 
 function confirmLeave() {
   return !S.dirty || confirm("Discard unsaved changes to the plan?");
@@ -851,7 +1042,7 @@ function addFeed(r) {
   if (++S.feedCount > 2500) { feed.firstChild.remove(); S.feedCount--; }
 }
 function scrollFeed(force) {
-  if (S.view !== "project" || S.tab === "files") return;
+  if (S.view !== "project" || S.tab === "files" || S.tab === "stats") return;
   const pane = $(`#pane-${S.tab}`);
   if (pane && (force || $("#f-follow").checked)) pane.scrollTop = pane.scrollHeight;
 }
@@ -889,7 +1080,7 @@ async function pollEvents() {
     try {
       const { events, last } = await api("GET", `/api/events?after=${S.lastEvent}`);
       setOnline(true);
-      let refresh = false, reload = false, files = false;
+      let refresh = false, reload = false, files = false, stats = false;
       if (last < S.lastEvent) { S.lastEvent = 0; refresh = reload = true; }  // server restarted: our state is stale
       for (const ev of events) {
         S.lastEvent = Math.max(S.lastEvent, ev.id);
@@ -902,10 +1093,12 @@ async function pollEvents() {
         }
         if (["job", "planning", "contract", "turn", "milestone_start", "skip", "guidance"].includes(ev.kind)) refresh = true;
         if (["job", "contract", "turn", "milestone_start", "skip", "guidance"].includes(ev.kind) && ev.project === S.current) reload = true;
+        if (["turn", "escalate", "guidance", "skip", "contract", "job"].includes(ev.kind) && ev.project === S.current) stats = true;
       }
       if (events.length) scrollFeed(false);
       if (refresh) scheduleRefresh(reload);
       if (files) scheduleFiles();
+      if (stats && S.tab === "stats") { clearTimeout(S.statsTimer); S.statsTimer = setTimeout(loadStats, 800); }
     } catch (e) {
       setOnline(false);
       await new Promise(r => setTimeout(r, 3000));

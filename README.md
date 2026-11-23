@@ -45,6 +45,13 @@ Then open **http://<that-machine>:8765** in a browser.
 - **Run**: watch it live on the right: each turn's outcome (actions, files
   changed, check passed/failed, and what the supervisor decided), plus the
   agent's individual steps.
+- **Stats** tab: working time, turns, agent actions, check pass rate, restarts,
+  how often it needed you, files changed, tokens in/out and peak context size
+  (vs `max_input_tokens`); a turn-by-turn timeline (hover a bar for details); a
+  per-milestone table; and breakdowns of why the supervisor stepped in, how
+  turns ended, which tools the agent used, and the most-changed files. Runs
+  logged before this version show no tokens, and their time is estimated from
+  log timestamps.
 - **When the agent needs help**, a card shows why, what the agent said, and the
   check's output. Type a hint and *Retry with guidance*, or *Skip* / *Stop*.
 - **Stop** any time; progress is saved, *Run* resumes. Runs keep going when you
