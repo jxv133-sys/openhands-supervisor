@@ -560,22 +560,37 @@ class Supervisor:
 
 
 def _token_usage(conversation) -> dict:
-    """Cumulative LLM tokens of this conversation so far (best effort: zeros if
-    the SDK doesn't report them). `context` is the size of the latest prompt."""
+    """Cumulative LLM tokens of this conversation so far, and `context`: how
+    full the agent's context is (its latest call's prompt + reply). Zeros if
+    the SDK doesn't report them.
+
+    With a Docker sandbox the agent-server sends a stats *snapshot* that drops
+    the per-call token list, so `context` comes from the accumulated usage's
+    `per_turn_token` (the SDK keeps the latest call's size there "for
+    calculating context usage"), read from the agent's own LLM ("agent"), not
+    the combined total, whose last call may be the history summarizer's.
+    """
     try:
-        metrics = conversation.conversation_stats.get_combined_metrics()
-        usage, latest = metrics.accumulated_token_usage, metrics.token_usages
+        stats = conversation.conversation_stats
+        combined = stats.get_combined_metrics().accumulated_token_usage
     except Exception:
         return {"prompt": 0, "completion": 0, "context": 0}
     context = 0
     try:
-        if latest:
-            context = int(getattr(latest[-1], "prompt_tokens", 0) or 0)
+        agent_metrics = (getattr(stats, "usage_to_metrics", None) or {}).get("agent")
+        if agent_metrics is not None:
+            latest = getattr(agent_metrics, "token_usages", None)
+            if latest:  # full metrics (local conversations): exact prompt size
+                context = int(getattr(latest[-1], "prompt_tokens", 0) or 0)
+            elif agent_metrics.accumulated_token_usage is not None:
+                context = int(agent_metrics.accumulated_token_usage.per_turn_token or 0)
+        if not context and combined is not None:
+            context = int(getattr(combined, "per_turn_token", 0) or 0)
     except Exception:
         pass
     return {
-        "prompt": int(getattr(usage, "prompt_tokens", 0) or 0),
-        "completion": int(getattr(usage, "completion_tokens", 0) or 0),
+        "prompt": int(getattr(combined, "prompt_tokens", 0) or 0),
+        "completion": int(getattr(combined, "completion_tokens", 0) or 0),
         "context": context,
     }
 

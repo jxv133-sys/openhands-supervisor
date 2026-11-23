@@ -105,3 +105,21 @@ def test_seq_keeps_increasing_across_messages():
     live.end()
     seqs = [r["seq"] for r in out]
     assert seqs == sorted(seqs) and len(set(seqs)) == len(seqs)
+
+
+def test_context_size_from_sandbox_stats_snapshot():
+    """The agent-server sends stats snapshots without the per-call token list
+    (use_snapshot). Context must come from the agent's accumulated per_turn_token,
+    not the combined total (whose last call may be the history summarizer)."""
+    from types import SimpleNamespace as NS
+
+    from supervisor.runner import _token_usage
+
+    agent = NS(token_usages=[], accumulated_token_usage=NS(prompt_tokens=45600, completion_tokens=1750, per_turn_token=22100))
+    condenser = NS(token_usages=[], accumulated_token_usage=NS(prompt_tokens=30000, completion_tokens=1200, per_turn_token=31200))
+    combined = NS(accumulated_token_usage=NS(prompt_tokens=75600, completion_tokens=2950, per_turn_token=31200), token_usages=[])
+    stats = NS(usage_to_metrics={"agent": agent, "condenser": condenser}, get_combined_metrics=lambda: combined)
+    assert _token_usage(NS(conversation_stats=stats)) == {"prompt": 75600, "completion": 2950, "context": 22100}
+    # A local conversation (full metrics) uses the exact prompt size of the latest call.
+    agent.token_usages = [NS(prompt_tokens=21400)]
+    assert _token_usage(NS(conversation_stats=stats))["context"] == 21400
