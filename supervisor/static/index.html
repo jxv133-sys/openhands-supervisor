@@ -560,13 +560,6 @@
   /* logo states (color isn't motion, so these apply even with reduced motion) */
   body.help .logo .lg-check { stroke: var(--warn); }
 
-  /* the activity reel (see setAnim) */
-  .reel { display: inline-block; position: relative; width: 22px; height: 16px; overflow: hidden; vertical-align: -3px; flex: none; }
-  .reel .strip { display: flex; flex-direction: column; will-change: transform; }
-  .reel .strip > .anim { flex: none; vertical-align: 0; }
-  .reel.spinning { -webkit-mask-image: linear-gradient(transparent, #000 28%, #000 72%, transparent); mask-image: linear-gradient(transparent, #000 28%, #000 72%, transparent); }
-  .reel.spinning .strip { filter: blur(.45px); }
-
   /* ================= motion =================
      Motion marks something arriving, finishing or needing you. It never loops
      for decoration, and none of it runs with prefers-reduced-motion. */
@@ -1602,35 +1595,11 @@ function anim(kind) {
   return n;
 }
 // Swap the animation inside `slot` only when the kind changes, so it doesn't restart every second.
-// A slot-machine reel: every activity icon on a vertical strip behind a
-// 22x16 window. When the activity changes, the strip spins down past the other
-// icons and lands on the new one. Three copies of the strip, so each change
-// rolls a full 10-19 icons whichever two icons it moves between.
-const REEL = ["think", "type", "term", "doc", "gear", "scan", "boot", "radar", "plan", "stop"];
-const REEL_H = 16;
+// Show the animation for the current activity (replaced only when it changes,
+// so it doesn't restart every second).
 function setAnim(slot, kind) {
   if (slot.dataset.kind === kind) return;
-  const n = REEL.length, t = Math.max(0, REEL.indexOf(kind));
-  let reel = slot.querySelector(".reel"), from;
-  if (!reel) {  // a new reel spins in from the last activity shown anywhere
-    reel = el("span", { class: "reel", "aria-hidden": "true" }, el("span", { class: "strip" }));
-    for (let c = 0; c < 3; c++) for (const k of REEL) reel.firstChild.append(anim(k));
-    slot.replaceChildren(reel);
-    from = Math.max(0, REEL.indexOf(S.lastReel || "think"));
-  } else from = Math.max(0, REEL.indexOf(slot.dataset.kind));
-  slot.dataset.kind = kind; S.lastReel = kind;
-  const strip = reel.firstChild, at = (i) => `translateY(${-i * REEL_H}px)`;
-  const settle = () => { strip.style.transition = "none"; strip.style.transform = at(2 * n + t); reel.classList.remove("spinning"); };
-  clearTimeout(reel.settleTimer);
-  if (matchMedia("(prefers-reduced-motion: reduce)").matches || from === t) { settle(); return; }
-  // Rest position is the last copy; roll down (content moves down) n..2n-1 icons to the target.
-  strip.style.transition = "none"; strip.style.transform = at(2 * n + from);
-  const target = 2 * n + from - (n + ((from - t + n) % n));
-  void strip.offsetHeight;
-  reel.classList.add("spinning");
-  strip.style.transition = "transform .78s cubic-bezier(.15,.85,.25,1.12)";
-  strip.style.transform = at(target);
-  reel.settleTimer = setTimeout(settle, 820);
+  slot.dataset.kind = kind; slot.replaceChildren(anim(kind));
 }
 // Which animation fits a tool call: terminal for commands, a page for file edits.
 function toolAnim(summary) {
