@@ -13,13 +13,16 @@ import os
 import queue
 import re
 import shutil
+import tempfile
 import threading
+import zipfile
 import time
 import traceback
 from collections import deque
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import urllib.parse
 from urllib.parse import parse_qs, urlparse
 
 from .config import Settings
@@ -197,7 +200,9 @@ class App:
         self.bus = EventBus()
         self.job: Job | None = None
         self._lock = threading.Lock()
-        self._planning: set[str] = set()
+        # name -> token of the request planning it; cancelling drops the entry, and
+        # only the request holding the current token may clear it or save a plan.
+        self._planning: dict[str, object] = {}
         self._chatting: set[str] = set()
 
     # --- helpers -------------------------------------------------------
@@ -378,6 +383,63 @@ class App:
 
         return events()
 
+    def cancel_planning(self, name: str) -> dict:
+        """Forget a project that's still being planned. The model call can't be
+        interrupted, so it finishes in the background and its plan is thrown away."""
+        with self._lock:
+            if self._planning.pop(name, None) is None:
+                raise ApiError(HTTPStatus.NOT_FOUND, f"{name!r} isn't being planned")
+        self.bus.publish({"kind": "planning", "project": name, "active": False})
+        return {"cancelled": name}
+
+    def rename(self, name: str, new_name: str) -> dict:
+        path = self._require_contract(name)
+        new_path = self.project_path(new_name)
+        with self._lock:
+            if self._active_job_for(name):
+                raise ApiError(HTTPStatus.CONFLICT, "stop the run before renaming the project")
+            if name in self._planning or new_name in self._planning:
+                raise ApiError(HTTPStatus.CONFLICT, "wait for planning to finish")
+            if new_path.exists() or new_path.is_symlink():
+                raise ApiError(HTTPStatus.CONFLICT, f"there's already a folder named {new_name!r}")
+            if path.is_symlink() or path.resolve().parent != self.root:
+                raise ApiError(HTTPStatus.BAD_REQUEST, "refusing to rename outside the projects folder")
+            os.rename(path, new_path)
+            if self.job is not None and self.job.project == name:
+                self.job.project = new_name  # finished/stopped status follows the project
+        self.bus.publish({"kind": "contract", "project": name, "renamed_to": new_name})
+        return {"renamed": name, "to": new_name}
+
+    def download_file(self, name: str, rel: str) -> Path:
+        root = self._require_contract(name).resolve()
+        target = (root / rel).resolve()
+        if root not in target.parents or not target.is_file():
+            raise ApiError(HTTPStatus.NOT_FOUND, "no such file")
+        return target
+
+    def archive(self, name: str):
+        """The project as a .zip in a temp file (rewound), without build output,
+        downloaded dependencies or the supervisor's state. Returns (file, size)."""
+        from .progress import IGNORED_DIRS
+
+        skip = IGNORED_DIRS - {".git"}  # keep the history if the agent made one
+        root = self._require_contract(name).resolve()
+        out = tempfile.SpooledTemporaryFile(max_size=64 * 1024 * 1024)
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as zf:
+            for folder, dirs, files in os.walk(root):
+                dirs[:] = sorted(d for d in dirs if d not in skip and not os.path.islink(os.path.join(folder, d)))
+                for f in sorted(files):
+                    full = os.path.join(folder, f)
+                    if os.path.islink(full):
+                        continue  # could point outside the project
+                    try:
+                        zf.write(full, os.path.join(name, os.path.relpath(full, root)))
+                    except OSError:
+                        continue  # unreadable (e.g. owned by the sandbox's user): skip it
+        size = out.tell()
+        out.seek(0)
+        return out, size
+
     def delete(self, name: str, keep_code: bool) -> dict:
         """Remove a project from the supervisor (its .supervisor folder), or,
         unless keep_code, the whole project folder with its code."""
@@ -437,19 +499,27 @@ class App:
             raise ApiError(HTTPStatus.BAD_REQUEST, "describe what to build")
         if Contract.path_for(path).exists():
             raise ApiError(HTTPStatus.CONFLICT, f"project {name!r} already exists")
+        token = object()
         with self._lock:
             if name in self._planning:
                 raise ApiError(HTTPStatus.CONFLICT, "already planning this project")
-            self._planning.add(name)
+            self._planning[name] = token
         self.bus.publish({"kind": "planning", "project": name, "active": True})
         try:
             contract = plan(goal, self.settings.ollama_url, self.settings.model, timeout=self.settings.llm_timeout)
         except Exception as exc:
+            if self._planning.get(name) is not token:
+                raise ApiError(HTTPStatus.CONFLICT, "planning was cancelled") from exc
             raise ApiError(HTTPStatus.BAD_GATEWAY, f"planning failed: {exc}") from exc
         finally:
             with self._lock:
-                self._planning.discard(name)
-            self.bus.publish({"kind": "planning", "project": name, "active": False})
+                cancelled = self._planning.get(name) is not token
+                if not cancelled:
+                    del self._planning[name]
+            if not cancelled:
+                self.bus.publish({"kind": "planning", "project": name, "active": False})
+        if cancelled:
+            raise ApiError(HTTPStatus.CONFLICT, "planning was cancelled")
         if Contract.path_for(path).exists():  # created meanwhile (CLI, another tab)
             raise ApiError(HTTPStatus.CONFLICT, f"project {name!r} was created while planning")
         path.mkdir(parents=True, exist_ok=True)
@@ -537,6 +607,18 @@ def make_handler(app: App, token: str | None):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(body)
+
+        def _file(self, f, size: int, filename: str, content_type: str = "application/octet-stream") -> None:
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(size))
+            safe = re.sub(r"[^A-Za-z0-9._-]", "_", filename) or "download"
+            quoted = urllib.parse.quote(filename)
+            self.send_header("Content-Disposition", f"attachment; filename=\"{safe}\"; filename*=UTF-8''{quoted}")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.end_headers()
+            shutil.copyfileobj(f, self.wfile, 256 * 1024)
 
         def _stream(self, events) -> None:
             """One JSON object per line, flushed as it comes; the connection
@@ -629,6 +711,19 @@ def make_handler(app: App, token: str | None):
                 if method == "POST" and route == ["projects"]:
                     body = self._body()
                     return self._json(HTTPStatus.CREATED, app.create(str(body.get("name", "")), str(body.get("goal", ""))))
+                if method == "POST" and len(route) == 3 and route[0] == "projects" and route[2] == "rename":
+                    return self._json(HTTPStatus.OK, app.rename(route[1], str(self._body().get("name", "")).strip()))
+                if method == "POST" and len(route) == 3 and route[0] == "planning" and route[2] == "cancel":
+                    return self._json(HTTPStatus.OK, app.cancel_planning(route[1]))
+                if method == "GET" and len(route) == 3 and route[0] == "projects" and route[2] == "download":
+                    rel = (parse_qs(url.query).get("path") or [""])[0]
+                    target = app.download_file(route[1], rel)
+                    with target.open("rb") as f:
+                        return self._file(f, target.stat().st_size, target.name)
+                if method == "GET" and len(route) == 3 and route[0] == "projects" and route[2] == "archive":
+                    f, size = app.archive(route[1])
+                    with f:
+                        return self._file(f, size, f"{route[1]}.zip", "application/zip")
                 if len(route) == 2 and route[0] == "projects":
                     if method == "DELETE":
                         keep = (parse_qs(url.query).get("keep_code") or ["0"])[0] == "1"

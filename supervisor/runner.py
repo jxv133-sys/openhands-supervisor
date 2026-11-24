@@ -151,14 +151,15 @@ class Supervisor:
     # --- sandbox helpers ------------------------------------------------
 
     def _exec(self, workspace, cmd: str, timeout: int) -> CheckResult:
+        started = time.monotonic()
         try:
             result = workspace.execute_command(_bash(cmd), cwd=PROJECT_DIR, timeout=timeout)
         except Exception as exc:  # sandbox/API failure: report as a failed check
-            return CheckResult(False, -1, f"supervisor could not run the command: {exc}")
+            return CheckResult(False, -1, f"supervisor could not run the command: {exc}", time.monotonic() - started)
         output = (result.stdout or "") + ("\n" + result.stderr if result.stderr else "")
         if getattr(result, "timeout_occurred", False):
             output += f"\n(command timed out after {timeout}s)"
-        return CheckResult(result.exit_code == 0, result.exit_code, output[-8000:])
+        return CheckResult(result.exit_code == 0, result.exit_code, output[-8000:], time.monotonic() - started)
 
     def _check(self, workspace, cmd: str, baseline: testguard.TestScan | None = None) -> CheckResult:
         """Run a check, and only count a pass that really tested something: it
@@ -170,11 +171,11 @@ class Supervisor:
             return res
         reason = testguard.zero_tests(res.output)
         if reason:
-            return CheckResult(False, 1, res.output + testguard.zero_tests_feedback(reason))
+            return CheckResult(False, 1, res.output + testguard.zero_tests_feedback(reason), res.seconds)
         if baseline is not None:
             found = testguard.problems(baseline, testguard.scan(self.project_dir))
             if found:
-                return CheckResult(False, 1, res.output + testguard.problems_feedback(found))
+                return CheckResult(False, 1, res.output + testguard.problems_feedback(found), res.seconds)
         return res
 
     def _setup(self, workspace) -> None:
@@ -274,7 +275,7 @@ class Supervisor:
             res = self._check(workspace, m.check)
             self.log.chat({"role": "check", "command": m.check, "passed": res.passed, "exit_code": res.exit_code,
                            "text": res.output[-4000:], "decision": "regression check",
-                           "reason": f"milestone {i}: {m.title}", "changed": []})
+                           "reason": f"milestone {i}: {m.title}", "changed": [], "seconds": round(res.seconds, 1)})
             if not res.passed:
                 report["regressions"].append({"milestone": i, "title": m.title, "output": res.output[-2000:]})
                 if may_add:
@@ -308,7 +309,7 @@ class Supervisor:
                 entry["passed"], entry["output"] = res.passed, res.output[-2000:]
                 self.log.chat({"role": "check", "command": req["check"], "passed": res.passed, "exit_code": res.exit_code,
                                "text": res.output[-4000:], "decision": "requirement",
-                               "reason": req["requirement"], "changed": []})
+                               "reason": req["requirement"], "changed": [], "seconds": round(res.seconds, 1)})
                 # Same check already tried as a milestone (e.g. you skipped it): don't add it again.
                 if not res.passed and may_add and req["check"] not in known_checks:
                     milestone = review.fix_milestone(req["requirement"], req["check"], res.output)
@@ -427,6 +428,7 @@ class Supervisor:
                             "decision": decision.action.value,
                             "reason": decision.reason,
                             "changed": changed[:50],
+                            "seconds": round(check.seconds, 1),
                         },
                         milestone=n,
                     )

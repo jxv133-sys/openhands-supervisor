@@ -503,6 +503,7 @@
   .itool { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--dim); margin: 4px 0; flex-wrap: wrap; }
   .itool .ok { color: var(--ok); font-weight: 700; }
   .itool details { flex-basis: 100%; padding: 0 0 0 22px; } .itool details pre { max-height: 220px; font-size: 12px; }
+  .itook { font-size: 11.5px; color: var(--faint); margin: -12px 0 16px; font-variant-numeric: tabular-nums; }
   .inotice { font-size: 12.5px; color: var(--dim); font-style: italic; margin: 6px 0; } .inotice.err { color: var(--bad); font-style: normal; }
   .propose { margin: 10px 0 14px; padding: 14px 16px; border-radius: var(--r-lg); border: 1px solid var(--accent-line); background: var(--accent-bg); }
   .propose b { font-size: 15px; } .propose p { margin: 6px 0 10px; color: var(--text); }
@@ -512,6 +513,22 @@
     .ideas-list #ic-new { width: auto; margin: 0; flex: none; } #ic-chats { display: flex; gap: 6px; } .ic { white-space: nowrap; max-width: 200px; }
     .iu { margin-left: 8%; } .ideas-thread { padding: 18px 14px 8px; } .ideas-compose { padding: 8px 10px 12px; }
   }
+
+  /* project actions menu */
+  button.more { padding: 2px 10px; font-size: 15px; line-height: 1.2; background: transparent; border-color: transparent; color: var(--dim); }
+  button.more:hover:not(:disabled) { color: var(--text); border-color: var(--border); background: var(--panel2); }
+  .proj { position: relative; }
+  .proj .more { position: absolute; right: 6px; top: 7px; visibility: hidden; }
+  .proj:hover .more, .proj .more:focus-visible, .proj .more.open { visibility: visible; }
+  @media (hover: none) { .proj .more { visibility: visible; } }
+  .proj .cancel { position: absolute; right: 8px; top: 8px; }
+  .pmenu { position: fixed; z-index: 40; min-width: 210px; padding: 5px; background: var(--panel2); border: 1px solid var(--border); border-radius: var(--r-md);
+    box-shadow: 0 10px 30px #0009; }
+  .pmenu button { display: block; width: 100%; text-align: left; background: none; border: none; padding: 7px 10px; border-radius: 6px; font-weight: 500; }
+  .pmenu button:hover:not(:disabled) { background: var(--accent-bg); }
+  .pmenu button.bad { color: var(--bad); } .pmenu button.bad:hover:not(:disabled) { background: var(--bad-bg); }
+  .pmenu hr { border: none; border-top: 1px solid var(--line-soft); margin: 4px 2px; }
+  .vh button { padding: 1px 9px; font-size: 12px; }
 
   /* drafting a milestone */
   .composer { border-style: dashed; border-color: var(--accent-line); background: transparent; }
@@ -563,6 +580,18 @@
   <main id="main"></main>
 </div>
 <div class="toast hidden" id="toast"></div>
+<dialog id="ren-dialog">
+  <form method="dialog" class="dlg">
+    <h3>Rename <span id="ren-old"></span></h3>
+    <label for="ren-new">New name (the folder under projects/ is renamed too)</label>
+    <input id="ren-new" autocomplete="off" spellcheck="false">
+    <div class="dim" id="ren-hint" style="font-size:12px;margin-top:6px">Letters, digits, '.', '_' and '-'.</div>
+    <div class="row" style="margin-top:16px;justify-content:flex-end">
+      <button value="cancel" formnovalidate>Cancel</button>
+      <button class="primary" id="ren-go" value="go">Rename</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="del-dialog">
   <form method="dialog" class="dlg">
     <h3>Delete <span id="del-name"></span>?</h3>
@@ -649,12 +678,12 @@
       <div class="toolbar">
         <h2 id="p-name"></h2>
         <span class="chip" id="p-progress"></span>
+        <button class="small more" id="p-more" title="Rename, download or delete" aria-label="More actions">⋯</button>
         <span class="grow"></span>
         <span class="unsaved hidden" id="p-unsaved">unsaved changes</span>
         <button id="p-save" disabled title="Save (Ctrl+S)">Save</button>
         <button class="primary" id="p-run">Run</button>
         <button class="danger hidden" id="p-stop">Stop</button>
-        <button class="small ghost" id="p-delete" title="Delete this project">Delete</button>
       </div>
       <div class="rail" id="p-rail"></div>
       <div class="runline hidden" id="p-runline"></div>
@@ -832,11 +861,15 @@ function renderSidebar() {
     }
     const meta = el("div", { class: "dim", style: "font-size:12px", text: p.error ? "invalid plan" : `${p.done}/${p.total} done` + (p.skipped ? ` · ${p.skipped} skipped` : "") });
     const goal = (p.goal || "").split("\n")[0];
+    const more = el("button", { class: "small more", title: "Rename, download or delete", "aria-label": `More actions for ${p.name}`, text: "⋯",
+      onclick: (e) => { e.stopPropagation(); projectMenu(p.name, e.currentTarget); } });
     box.append(el("div", { class: "proj" + (S.current === p.name && S.view === "project" ? " active" : ""), title: goal,
-      onclick: () => { document.body.classList.remove("menu-open"); openProject(p.name); } }, name, meta, bar));
+      onclick: () => { document.body.classList.remove("menu-open"); openProject(p.name); } }, name, meta, bar, more));
   }
   for (const name of S.state.planning) {
-    box.append(el("div", { class: "proj" }, el("div", { class: "name" }, anim("plan"), name), el("div", { class: "dim shimmer", style: "font-size:12px", text: "planning..." })));
+    box.append(el("div", { class: "proj" }, el("div", { class: "name" }, anim("plan"), name), el("div", { class: "dim shimmer", style: "font-size:12px", text: "planning..." }),
+      el("button", { class: "small cancel", text: "Cancel", title: "Stop waiting for this plan; it is thrown away when it arrives",
+        onclick: async () => { try { await api("POST", `/api/planning/${encodeURIComponent(name)}/cancel`); await refreshState(); } catch (e) { toast(e.message); } } })));
   }
 }
 function renderJobChip() {
@@ -924,6 +957,7 @@ function renderIdeas() {
     else if (m.role === "assistant") {
       if (m.thinking) thread.append(thinkingNode(m.thinking, m.seconds));
       if (m.content) thread.append(el("div", { class: "ia" }, ...md(m.content)));
+      if (m.content && m.seconds && !(m.tool_calls || []).length) thread.append(el("div", { class: "itook", title: m.ts ? `sent ${new Date(m.ts * 1000).toLocaleString()}` : "", text: `answered in ${tookText(m.seconds)}` }));
       if (m.stopped) thread.append(el("div", { class: "inotice", text: "Stopped." }));
       lastTools = [];
       for (const c of m.tool_calls || []) {
@@ -1211,7 +1245,7 @@ async function openProject(name, skipConfirm = false) {
   $("#p-add").onclick = () => { addMilestone({ title: "", instructions: "", check: "" }, false); };
   $("#mc-draft").onclick = draftMilestone;
   $("#br-send").onclick = reportProblem;
-  $("#p-delete").onclick = deleteProject;
+  $("#p-more").onclick = (e) => projectMenu(S.current, e.currentTarget);
   $("#mc-text").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); draftMilestone(); } };
   $("#esc-retry").onclick = () => answer("guidance");
   $("#esc-text").onkeydown = (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); answer("guidance"); } };
@@ -1236,7 +1270,7 @@ async function openProject(name, skipConfirm = false) {
   for (const rec of S.project.log) addFeed(rec);
   $("#chat").replaceChildren(); $("#live").replaceChildren(); S.calls = new Map(); S.chatCount = 0;
   S.live = null; S.lastRole = null; S.lastSummary = null; S.phase = null; S.lastActivityAt = null;
-  S.context = S.project.context || null;
+  S.context = S.project.context || null; S.prevAt = null;
   for (const rec of S.project.chat) addChat(rec);
   S.lastActivityAt = Date.now();
   if (S.project.live) { startLive(S.project.live); renderLive(); }
@@ -1298,6 +1332,12 @@ function callArgsBlock(r) {
     return el("details", {}, el("summary", { text: "arguments" }), el("pre", { class: "mono", text: JSON.stringify(rest, null, 2) }));
   return null;
 }
+// "<1s", "42s", "3m 5s"; nothing for unknown or implausible gaps (a stop and a
+// resume the next day isn't "how long it took").
+function tookText(sec) {
+  if (sec == null || !isFinite(sec) || sec < 0 || sec > 3 * 3600) return "";
+  return sec < 1 ? "<1s" : duration(sec);
+}
 function addChat(r, isLive) {
   const chat = $("#chat"); if (!chat) return;
   // What the agent is doing now, for the live status line.
@@ -1306,32 +1346,41 @@ function addChat(r, isLive) {
   if (r.role === "system" && r.level === "divider") S.phase = /^Final review/.test(r.text) ? "review" : "milestone";
   S.lastActivityAt = isLive ? Date.now() : (S.lastActivityAt || Date.now());
   if (S.chatCount === 0) chat.replaceChildren();
-  const t = time(r.ts); let node = null;
+  // Show how long each step took instead of the clock time (hover for the time).
+  // "t" is precise (newer runs); older records only have whole seconds in "ts".
+  const at = r.t ? r.t * 1000 : (r.ts ? Date.parse(r.ts) : null);
+  const since = S.prevAt != null && at != null ? (at - S.prevAt) / 1000 : null;
+  if (at != null) S.prevAt = at;
+  const when = (r.ts || "").replace("T", " ");
+  const took = (sec, verb = "took") => { const v = tookText(sec); return el("span", { class: "t", title: when ? `sent ${when}` : "", text: v ? `${verb} ${v}` : "" }); };
+  let node = null;
   switch (r.role) {
     case "system":
       if (r.level === "divider") node = el("div", { class: "chatdiv", text: r.text });
       else node = el("div", { class: "msg system" + (r.level === "error" ? " error" : "") }, el("div", { class: "body", text: r.text }));
       break;
     case "supervisor":
-      node = el("div", { class: "msg supervisor" }, el("div", { class: "who" }, "Supervisor → agent", el("span", { class: "t", text: t })), ...collapsible(r.text));
+      node = el("div", { class: "msg supervisor" }, el("div", { class: "who" }, "Supervisor → agent", took(null)), ...collapsible(r.text));
       break;
     case "agent":
-      node = el("div", { class: "msg agent" }, el("div", { class: "who" }, "Agent", el("span", { class: "t", text: t })), thinkingBlock(r.thinking), ...collapsible(r.text));
+      node = el("div", { class: "msg agent" }, el("div", { class: "who" }, "Agent", took(since)), thinkingBlock(r.thinking), ...collapsible(r.text));
       break;
     case "tool_call":
       node = el("div", { class: "msg tool" },
-        el("div", { class: "who" }, r.tool, el("span", { class: "t", text: t })),
+        el("div", { class: "who" }, r.tool, took(since)),
         thinkingBlock(r.thinking),
         el("div", { class: "summary", text: r.summary }),
         callArgsBlock(r));
-      if (r.call_id) S.calls.set(r.call_id, node);
+      if (r.call_id) { S.calls.set(r.call_id, node); node.dataset.at = at ?? ""; }
       break;
     case "tool_result": {
       const text = r.text || "(no output)";
       const lines = text.split("\n").length;
-      const out = el("details", {}, el("summary", { text: `output (${lines} line${lines === 1 ? "" : "s"})` }), el("pre", { class: "mono", text }));
-      if (lines <= 6 && text.length < 600) out.open = true;
       const call = S.calls.get(r.action_id);
+      const ran = call && call.dataset.at && at != null ? tookText((at - Number(call.dataset.at)) / 1000) : "";
+      const out = el("details", {}, el("summary", { title: when ? `finished ${when}` : "",
+        text: `output (${lines} line${lines === 1 ? "" : "s"})${ran ? ` · ran ${ran}` : ""}` }), el("pre", { class: "mono", text }));
+      if (lines <= 6 && text.length < 600) out.open = true;
       if (call) { call.append(out); S.calls.delete(r.action_id); scrollFeed(false); return; }
       node = el("div", { class: "msg tool" }, el("div", { class: "who" }, `${r.tool} result`), out);
       break;
@@ -1340,7 +1389,7 @@ function addChat(r, isLive) {
       const out = el("details", {}, el("summary", { text: "check output" }), el("pre", { class: "mono", text: r.text || "(no output)" }));
       if (!r.passed) out.open = true;
       node = el("div", { class: "msg check " + (r.passed ? "ok" : "bad") },
-        el("div", { class: "who" }, r.passed ? "✓ check passed" : `✗ check failed (exit ${r.exit_code})`, el("span", { class: "t", text: t })),
+        el("div", { class: "who" }, r.passed ? "✓ check passed" : `✗ check failed (exit ${r.exit_code})`, took(r.seconds ?? null)),
         el("div", { class: "summary mono", style: "padding:2px 10px", text: r.command }),
         el("div", { class: "body" }, el("span", { class: "badge act", text: (r.decision || "").toUpperCase() }), r.reason || ""),
         (r.changed || []).length ? el("div", { class: "body" }, "files changed: ", ...r.changed.map(fileChip)) : null,
@@ -1483,7 +1532,8 @@ async function openFile(path, keepScroll) {
     const meta = (S.files && S.files.files.find(f => f.path === path)) || {};
     S.openFile = { path, mtime: meta.mtime };
     const viewer = $("#viewer"); const top = viewer.scrollTop;
-    const head = el("div", { class: "vh" }, el("span", { class: "grow", text: path }), el("span", { class: "dim", text: `${data.size.toLocaleString()} bytes` }));
+    const head = el("div", { class: "vh" }, el("span", { class: "grow", text: path }), el("span", { class: "dim", text: `${data.size.toLocaleString()} bytes` }),
+      el("button", { text: "Download", title: `Download ${path}`, onclick: () => download(`/api/projects/${encodeURIComponent(S.current)}/download?path=${encodeURIComponent(path)}`, path.split("/").pop()) }));
     let body;
     if (data.binary) body = el("div", { class: "dim", style: "padding:20px", text: "Binary file." });
     else {
@@ -1715,8 +1765,67 @@ async function reportProblem() {
   finally { if ($("#br-send")) { $("#br-send").disabled = jobHere(); $("#br-status").textContent = before; } }
 }
 
-function deleteProject() {
-  const name = S.current, dlg = $("#del-dialog");
+// ---------- project actions: rename, download, delete ----------
+function projectMenu(name, anchor) {
+  document.querySelector(".pmenu")?.remove();
+  const running = jobActive() && job().project === name;
+  const close = () => { menu.remove(); anchor.classList.remove("open"); document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", esc, true); };
+  const item = (text, fn, cls = "", disabled = false) => el("button", { class: cls, text, title: disabled ? "Stop the run first" : "", ...(disabled ? { disabled: "" } : {}),
+    onclick: () => { close(); fn(); } });
+  const menu = el("div", { class: "pmenu", role: "menu" },
+    item("Rename...", () => renameProject(name), "", running),
+    item("Download project (.zip)", () => download(`/api/projects/${encodeURIComponent(name)}/archive`, `${name}.zip`,
+      "Zipping the project (without build output)...")),
+    el("hr"),
+    item("Delete...", () => deleteProject(name), "bad", running));
+  document.body.append(menu); anchor.classList.add("open");
+  const r = anchor.getBoundingClientRect(), w = menu.offsetWidth;
+  menu.style.top = `${Math.min(r.bottom + 4, innerHeight - menu.offsetHeight - 8)}px`;
+  menu.style.left = `${Math.max(8, Math.min(r.right - w, innerWidth - w - 8))}px`;
+  const outside = (e) => { if (!menu.contains(e.target) && e.target !== anchor) close(); };
+  const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); close(); anchor.focus(); } };
+  setTimeout(() => { document.addEventListener("pointerdown", outside, true); document.addEventListener("keydown", esc, true); });
+  menu.querySelector("button:not([disabled])")?.focus();
+}
+// Fetch with the access token, then save: the token never goes into a URL.
+async function download(url, filename, note) {
+  if (note) toast(note, "ok");
+  try {
+    const headers = {}; const token = localStorage.getItem("supervisorToken"); if (token) headers["X-Token"] = token;
+    const res = await fetch(url, { headers });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || res.statusText); }
+    const blob = await res.blob(); const a = el("a", { href: URL.createObjectURL(blob), download: filename });
+    document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  } catch (e) { toast(`Download failed: ${e.message}`); }
+}
+function renameProject(name) {
+  const dlg = $("#ren-dialog"), input = $("#ren-new"), go = $("#ren-go");
+  $("#ren-old").textContent = name; input.value = name;
+  const taken = new Set((S.state.projects || []).map(p => p.name));
+  const sync = () => {
+    const v = input.value.trim(); let msg = "Letters, digits, '.', '_' and '-'.";
+    let ok = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(v);
+    if (v && !ok) msg = "Only letters, digits, '.', '_' and '-', starting with a letter or digit.";
+    if (ok && v !== name && taken.has(v)) { ok = false; msg = `There's already a project named ${v}.`; }
+    $("#ren-hint").textContent = msg; $("#ren-hint").style.color = ok || !v ? "" : "var(--bad)";
+    go.disabled = !ok || v === name;
+  };
+  input.oninput = sync; sync();
+  dlg.onclose = async () => {
+    if (dlg.returnValue !== "go") return;
+    const to = input.value.trim();
+    try {
+      await api("POST", `/api/projects/${encodeURIComponent(name)}/rename`, { name: to });
+      toast(`Renamed ${name} to ${to}.`, "ok");
+      await refreshState();
+      if (S.view === "project" && S.current === name) { S.dirty = false; await openProject(to, true); }
+    } catch (e) { toast(e.message); }
+  };
+  dlg.showModal(); input.select();
+}
+
+function deleteProject(name = S.current) {
+  const dlg = $("#del-dialog");
   $("#del-name").textContent = name; document.querySelectorAll(".del-n").forEach(n => n.textContent = name);
   const sync = () => {
     const all = dlg.querySelector("input[name=del-mode]:checked").value === "all";
@@ -1733,7 +1842,8 @@ function deleteProject() {
       await api("DELETE", `/api/projects/${encodeURIComponent(name)}?keep_code=${all ? 0 : 1}`);
       S.dirty = false;
       toast(all ? `Deleted ${name} and its code.` : `Removed ${name} from the supervisor; the code is still in projects/${name}.`, "ok");
-      await refreshState(); openWelcome();
+      await refreshState();
+      if (S.view === "project" && S.current === name) openWelcome();
     } catch (e) { toast(e.message); }
   };
   dlg.showModal();
@@ -1818,7 +1928,7 @@ function renderMilestones() {
   $("#ms-count").textContent = `${ms.length} milestone${ms.length === 1 ? "" : "s"} · ${ms.filter(m => m.status === "done").length} done` +
     (ms.some(m => m.status === "skipped") ? ` · ${ms.filter(m => m.status === "skipped").length} skipped` : "");
   $("#p-add").disabled = locked; $("#mc-draft").disabled = locked; $("#mc-text").disabled = locked;
-  $("#br-send").disabled = locked; $("#p-delete").disabled = locked;
+  $("#br-send").disabled = locked;
   renderRail();
   $("#p-goal").disabled = locked; $("#p-setup").disabled = locked;
 }
@@ -1841,7 +1951,9 @@ function renderProjectChrome() {
   renderLiveStatus();
   // nothing left to do: Run does just the final review
   const allDone = S.draft && !S.draft.milestones.some(m => m.status === "pending");
-  $("#p-run").textContent = allDone && S.project && S.project.final_review ? "Run final review" : "Run";
+  const reviewOnly = allDone && S.project && S.project.final_review;
+  $("#p-run").textContent = reviewOnly ? "Run review" : "Run";
+  if (!jobActive()) $("#p-run").title = reviewOnly ? "Every milestone is done: run the final review again" : "";
   // job message
   const msg = $("#p-jobmsg");
   if (j && j.project === S.current && j.message && !j.escalation) {
@@ -2061,6 +2173,8 @@ async function pollEvents() {
       for (const ev of events) {
         S.lastEvent = Math.max(S.lastEvent, ev.id);
         if (S.view === "project" && ev.project === S.current) {
+          if (ev.kind === "contract" && ev.renamed_to) { const to = ev.renamed_to; S.dirty = false; refresh = true;
+            setTimeout(() => openProject(to, true), 0); continue; }
           if (ev.kind === "contract" && ev.deleted) { S.dirty = false; toast(`${ev.project} was deleted.`, "ok"); openWelcome(); refresh = true; continue; }
           if (ev.kind === "stream") { liveStream(ev); continue; }
           if (ev.kind === "context") { S.context = { tokens: ev.tokens, max: ev.max }; renderRunline(); if (S.tab === "stats" && S.stats) renderStats(); continue; }

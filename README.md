@@ -36,7 +36,7 @@ whole, again with real commands:
    `supervisor status`, and in `.supervisor/review.json`. Requirements no command
    can test (e.g. "messages are clear") are listed for you to check yourself.
 
-On a finished project, *Run* becomes *Run final review*. Turn it off with
+On a finished project, *Run* becomes *Run review*. Turn it off with
 `final_review = false` in `supervisor.toml`.
 
 Work is split into **milestones**, each run in a fresh conversation with a small
@@ -108,8 +108,14 @@ Then open **http://<that-machine>:8765** in a browser.
   supervisor drafts a fix milestone: the agent first writes a regression test
   that reproduces the problem (that test is the check), then fixes the code.
   *Save*, *Run*.
-- **Delete** a project from its toolbar: either remove it from the supervisor
-  and keep the code, or delete the folder with the code (type the name to confirm).
+- **⋯ menu** (next to a project's name, or on hover in the sidebar): *Rename*
+  (renames the folder too), *Download project (.zip)* (without build output,
+  dependencies or the supervisor's state; `.git` is kept), and *Delete*: either
+  remove it from the supervisor and keep the code, or delete the folder with
+  the code (type the name to confirm). A project that's still being planned
+  can be cancelled from the sidebar. Single files download from the *Files* tab.
+- **Chat** shows how long each step took: the model's time for a reply or tool
+  call, how long a command ran, how long a check took. Hover for the time.
 - **Stop** any time; progress is saved, *Run* resumes. Runs keep going when you
   close the tab; one run at a time (one GPU).
 - The browser tab title shows `⚠ <project> needs help` when the agent is waiting

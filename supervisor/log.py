@@ -52,7 +52,8 @@ class RunLog:
     def chat(self, record: dict, **extra) -> None:
         """One message of the agent conversation (see chat.py). Saved to
         chat.jsonl so the conversation survives reloads, and published live."""
-        full = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), **record, **extra}
+        # "t": precise time, so the page can show how long each step took.
+        full = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "t": round(time.time(), 3), **record, **extra}
         with self._lock, self.chat_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(full, default=str) + "\n")
         for listener in list(self._listeners):

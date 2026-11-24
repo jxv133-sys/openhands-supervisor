@@ -35,6 +35,7 @@ class CheckResult:
     passed: bool
     exit_code: int
     output: str  # stdout+stderr, already trimmed to a tail
+    seconds: float = 0.0  # how long the command ran
 
 
 class Action(str, Enum):
