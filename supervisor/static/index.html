@@ -269,12 +269,11 @@
   .a-think.plan i { background: var(--purple); } .a-think.plan i:nth-child(2) { background: var(--accent); }
   @keyframes orbit { from { transform: rotate(0deg) translateX(7px); } to { transform: rotate(360deg) translateX(7px); } }
   /* running a command: a tiny terminal being typed into */
-  .a-term { border: 1.5px solid var(--ok); border-radius: 3px; width: 21px; }
-  .a-term::before { content: ""; position: absolute; left: 2px; top: 2px; width: 3px; height: 3px; border-right: 1.5px solid var(--ok);
-    border-bottom: 1.5px solid var(--ok); transform: rotate(-45deg); }
-  .a-term i, .a-doc i { height: 1.5px; left: 7px; width: 0; background: var(--ok); animation: type 2s steps(6, end) infinite; }
-  .a-term i:nth-child(1) { top: 2.5px; --w: 9px; } .a-term i:nth-child(2) { top: 6.5px; left: 2px; --w: 13px; animation-delay: .5s; }
-  .a-term i:nth-child(3) { top: 10.5px; left: 2px; --w: 7px; animation-delay: 1s; }
+  /* running a command: a small terminal window, a ">" prompt and a blinking cursor (an SVG, so it stays crisp) */
+  .a-term svg { display: block; width: 22px; height: 16px; overflow: visible; }
+  .a-term .win, .a-term .chev { stroke: var(--accent); }
+  .a-term .cur { fill: var(--accent); }
+  .a-doc i { height: 1.5px; left: 7px; width: 0; background: var(--ok); animation: type 2s steps(6, end) infinite; }
   @keyframes type { 0% { width: 0; opacity: 1; } 25% { width: var(--w); } 80% { width: var(--w); opacity: 1; } 100% { width: var(--w); opacity: 0; } }
   /* editing a file: a page with lines being written */
   .a-doc { width: 14px; margin: 0 4px; border: 1.5px solid var(--accent); border-radius: 2px 5px 2px 2px; }
@@ -317,7 +316,7 @@
   .dot.waiting::after { animation-duration: 1s; }
   @media (prefers-reduced-motion: reduce) {
     .anim *, .anim::before, .anim::after, .dot::after, .msg.live .body::after { animation: none !important; }
-    .a-term i, .a-doc i { width: var(--w); }
+    .a-doc i { width: var(--w); }
     .shimmer { animation: none; background: none; color: var(--dim); }
   }
 
@@ -593,6 +592,8 @@
     body.run .logo .lg-cursor { animation: lg-cursor 1.1s steps(2, jump-none) infinite; }
     body.help .logo .lg-prompt, body.help .logo .lg-cursor { animation: lg-help 1s ease-in-out infinite; }
     @keyframes lg-draw { from { stroke-dashoffset: 100; } }
+    .a-term .cur { animation: term-cursor 1s steps(1, end) infinite; }
+    @keyframes term-cursor { 50% { opacity: 0; } }
     @keyframes lg-eyes { from { opacity: 0; } }
     @keyframes lg-cursor { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
     @keyframes lg-help { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
@@ -1605,10 +1606,19 @@ function addChat(r, isLive) {
 
 // ---------- activity animations ----------
 // think | plan | term | doc | gear | boot | scan | radar | type | stop
-const ANIM_DOTS = { think: 3, plan: 3, term: 3, doc: 3, gear: 0, boot: 3, scan: 3, radar: 3, type: 3, stop: 1 };
+const ANIM_DOTS = { think: 3, plan: 3, term: 0, doc: 3, gear: 0, boot: 3, scan: 3, radar: 3, type: 3, stop: 1 };
 function anim(kind) {
   const cls = kind === "plan" ? "a-think plan" : `a-${kind}`;
   const n = el("span", { class: `anim ${cls}`, "aria-hidden": "true" });
+  if (kind === "term") {  // same 16px-wide footprint as the other icons, centred in the 22px slot
+    const sv = (tag, attrs) => { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v); return e; };
+    const svgEl = sv("svg", { viewBox: "0 0 22 16", fill: "none", "stroke-linecap": "round", "stroke-linejoin": "round" });
+    svgEl.append(sv("rect", { class: "win", x: "3.25", y: "1.75", width: "15.5", height: "12.5", rx: "2.6", "stroke-width": "1.5" }),
+      sv("path", { class: "chev", d: "M6.6 5.6l2.4 2.4-2.4 2.4", "stroke-width": "1.6" }),
+      sv("rect", { class: "cur", x: "10.6", y: "9.4", width: "4.4", height: "1.6", rx: ".5" }));
+    n.append(svgEl);
+    return n;
+  }
   for (let i = 0; i < (ANIM_DOTS[kind] ?? 0); i++) n.append(el("i"));
   return n;
 }
