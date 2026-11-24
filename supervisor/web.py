@@ -277,7 +277,7 @@ class App:
             "chat": run_log.read_chat(600),
             "review": load_report(path),
             "live": self._live(name),
-            "context": self.job.supervisor.context if self._active_job_for(name) and self.job.supervisor else None,
+            "context": getattr(self.job.supervisor, "context", None) if self._active_job_for(name) else None,
             "final_review": self.settings.final_review,
             "running": self._active_job_for(name),
         }

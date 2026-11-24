@@ -119,6 +119,12 @@ Then open **http://<that-machine>:8765** in a browser.
   GPU), capabilities, sampling, and its context window, with a warning if
   Ollama's context is smaller than what the supervisor sends (prompts would be
   cut) or larger than the model was trained for.
+- The logo (a terminal prompt whose cursor is a check) blinks like a cursor
+  while a run is going and turns amber when the agent needs you; the browser
+  tab's icon changes color the same way. Motion is kept to moments that mean
+  something (a milestone completing, the help card arriving, a project
+  finishing, the activity icon spinning to what the agent is doing now) and
+  is off when your system asks for reduced motion.
 - **Chat** shows how long each step took: the model's time for a reply or tool
   call, how long a command ran, how long a check took. Hover for the time.
 - **Stop** any time; progress is saved, *Run* resumes. Runs keep going when you

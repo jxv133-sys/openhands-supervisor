@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenHands Supervisor</title>
+<link rel="icon" id="favicon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.5' y='2.5' width='27' height='27' rx='7.5' stroke='%23b7a6ff' stroke-width='2.6'/%3E%3Cpath d='M9 10.5l5.5 5.5L9 21.5' stroke='%237cc4f2' stroke-width='3'/%3E%3Cpath d='M16.5 20.5l2.7 2.7 5.6-6.2' stroke='%235ed3a1' stroke-width='3'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- Falls back to system fonts when offline. -->
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
@@ -556,6 +557,77 @@
   .capchip.key { color: var(--ok); border-color: var(--ok-line); }
   @media (max-width: 1000px) { .mgrid { grid-template-columns: 1fr; gap: 2px; } .mgrid dd { margin-bottom: 8px; } }
 
+  /* logo states (color isn't motion, so these apply even with reduced motion) */
+  body.help .logo .lg-check { stroke: var(--warn); }
+
+  /* the activity reel (see setAnim) */
+  .reel { display: inline-block; position: relative; width: 22px; height: 16px; overflow: hidden; vertical-align: -3px; flex: none; }
+  .reel .strip { display: flex; flex-direction: column; will-change: transform; }
+  .reel .strip > .anim { flex: none; vertical-align: 0; }
+  .reel.spinning { -webkit-mask-image: linear-gradient(transparent, #000 28%, #000 72%, transparent); mask-image: linear-gradient(transparent, #000 28%, #000 72%, transparent); }
+  .reel.spinning .strip { filter: blur(.45px); }
+
+  /* ================= motion =================
+     Motion marks something arriving, finishing or needing you. It never loops
+     for decoration, and none of it runs with prefers-reduced-motion. */
+  .tabs { position: relative; }
+  .tabs .ink { position: absolute; bottom: 0; left: 0; height: 2px; width: 0; background: var(--accent); border-radius: 2px; pointer-events: none; }
+  .tabs .tab.on { border-bottom-color: transparent; }
+  @media (prefers-reduced-motion: no-preference) {
+    .tabs .ink.ready { transition: left .28s cubic-bezier(.3,.7,.2,1), width .28s cubic-bezier(.3,.7,.2,1); }
+    /* logo: the check draws in once; blinks like a cursor while a run is going; amber pulse when it needs you */
+    .logo .lg-check { stroke-dasharray: 13; stroke-dashoffset: 0; }
+    .logo.draw .lg-check { animation: lg-draw .7s .2s cubic-bezier(.4,0,.2,1) backwards; }
+    .logo.draw .lg-prompt { animation: lg-prompt .45s cubic-bezier(.3,.7,.2,1) backwards; }
+    body.run .logo .lg-check { animation: lg-cursor 1.2s ease-in-out infinite; }
+    body.help .logo .lg-check { animation: lg-help 1.1s ease-in-out infinite; }
+    @keyframes lg-draw { from { stroke-dashoffset: 13; } }
+    @keyframes lg-prompt { from { opacity: 0; transform: translateX(-3px); } }
+    @keyframes lg-cursor { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+    @keyframes lg-help { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+    /* arrivals */
+    .enter { animation: rise-in .32s cubic-bezier(.2,.7,.2,1) both; }
+    .viewin { animation: view-in .22s ease-out both; }
+    @keyframes rise-in { from { opacity: 0; transform: translateY(8px); } }
+    @keyframes view-in { from { opacity: 0; transform: translateY(4px); } }
+    dialog[open] { animation: pop-in .18s cubic-bezier(.2,.8,.2,1); }
+    dialog[open]::backdrop { animation: fade-in .2s ease-out; }
+    .pmenu { animation: menu-in .14s cubic-bezier(.2,.8,.2,1); transform-origin: top right; }
+    .toast.pop { animation: toast-in .26s cubic-bezier(.2,.8,.2,1); }
+    @keyframes pop-in { from { opacity: 0; transform: translateY(6px) scale(.97); } }
+    @keyframes fade-in { from { opacity: 0; } }
+    @keyframes menu-in { from { opacity: 0; transform: scale(.96) translateY(-4px); } }
+    @keyframes toast-in { from { opacity: 0; transform: translateY(12px); } }
+    button:active:not(:disabled) { transform: translateY(1px); }
+    /* the help card arrives: slides in and glows twice */
+    .escalation.appear { animation: esc-in .4s cubic-bezier(.2,.8,.2,1), esc-glow 1.1s .35s ease-in-out 2; }
+    @keyframes esc-in { from { opacity: 0; transform: translateY(-10px); } }
+    @keyframes esc-glow { 50% { box-shadow: 0 0 0 4px color-mix(in oklab, var(--warn) 30%, transparent), 0 0 24px color-mix(in oklab, var(--warn) 25%, transparent); } }
+    /* a milestone completes: its node pops with a ring, the card flashes, its rail segment fills */
+    .ms.justdone::before { animation: node-pop .5s cubic-bezier(.2,1.6,.4,1); }
+    .ms.justdone::after { content: ""; position: absolute; left: -27px; top: 17px; width: 16px; height: 16px; border-radius: 50%;
+      border: 2px solid var(--ok); animation: ring-out .9s ease-out forwards; pointer-events: none; }
+    .ms.justdone { animation: done-flash 1.2s ease-out; }
+    .rail span.justdone { animation: rail-fill .7s cubic-bezier(.3,.7,.2,1); transform-origin: left; }
+    @keyframes node-pop { 0% { transform: scale(.4); } 60% { transform: scale(1.35); } }
+    @keyframes ring-out { from { transform: scale(.6); opacity: .9; } to { transform: scale(2.6); opacity: 0; } }
+    @keyframes done-flash { 0% { border-color: var(--ok-line); background: var(--ok-bg); } }
+    @keyframes rail-fill { from { transform: scaleX(0); } }
+    /* the whole project is done: a light sweeps across the rail */
+    .rail.celebrate span { position: relative; overflow: hidden; }
+    .rail.celebrate span::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.75), transparent);
+      transform: translateX(-100%); animation: sweep .9s ease-in-out forwards; animation-delay: calc(var(--i) * 70ms); }
+    @keyframes sweep { to { transform: translateX(100%); } }
+    /* stats, the first time the tab opens: bars grow, the timeline rises */
+    #stats.intro .hb .fill, #stats.intro .tbar, #stats.intro .meter > div { animation: grow-x .7s cubic-bezier(.3,.7,.2,1) both; transform-origin: left; }
+    #stats.intro .tl .bar { animation: grow-y .6s cubic-bezier(.3,.7,.2,1) both; transform-box: fill-box; transform-origin: bottom; animation-delay: calc(var(--i, 0) * 6ms); }
+    #stats.intro .tile { animation: rise-in .4s cubic-bezier(.2,.7,.2,1) both; animation-delay: calc(var(--i, 0) * 30ms); }
+    @keyframes grow-x { from { transform: scaleX(0); } }
+    @keyframes grow-y { from { transform: scaleY(0); } }
+    .enter .exitb { animation: badge-in .3s .25s cubic-bezier(.2,1.4,.4,1) backwards; }
+    @keyframes badge-in { from { transform: scale(.6); opacity: 0; } }
+  }
+
   /* drafting a milestone */
   .composer { border-style: dashed; border-color: var(--accent-line); background: transparent; }
   .composer textarea { min-height: 60px; }
@@ -585,10 +657,11 @@
 <header>
   <button id="menubtn" title="Projects">☰</button>
   <span class="brand">
-    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
-      <circle cx="13" cy="13" r="11.5" fill="none" stroke="var(--accent)" stroke-width="2"/>
-      <circle cx="13" cy="13" r="6" fill="none" stroke="var(--sky)" stroke-width="2" stroke-dasharray="26 12" transform="rotate(-40 13 13)"/>
-      <path d="M9.5 13.2l2.4 2.4 4.6-5" fill="none" stroke="var(--ok)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- "Checked prompt": a terminal prompt whose cursor is a check. Done means a command passed. -->
+    <svg class="logo" width="26" height="26" viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <rect class="lg-box" x="2.5" y="2.5" width="27" height="27" rx="7.5" stroke="var(--accent)" stroke-width="2.4"/>
+      <path class="lg-prompt" d="M9 10.5l5.5 5.5L9 21.5" stroke="var(--sky)" stroke-width="2.8"/>
+      <path class="lg-check" d="M16.5 20.5l2.7 2.7 5.6-6.2" stroke="var(--ok)" stroke-width="2.8"/>
     </svg>
     <h1>OpenHands Supervisor</h1>
   </span>
@@ -766,6 +839,7 @@
           <button class="tab" data-tab="activity">Activity</button>
           <button class="tab" data-tab="files">Files<span class="count hidden" id="n-files"></span></button>
           <button class="tab" data-tab="stats">Stats</button>
+          <span class="ink" aria-hidden="true"></span>
         </div>
         <span class="grow"></span>
         <label id="opt-thinking"><input type="checkbox" id="f-thinking"> thinking</label>
@@ -818,6 +892,7 @@ const S = {
   files: null,       // /api/projects/<name>/files
   openFile: null,    // {path, mtime}
   toggled: new Set(), // finished milestones the user folded/unfolded against the default
+  justDone: new Set(), // milestones that completed a moment ago (they animate once)
   drafted: new Set(), // milestones the model drafted, highlighted until saved
   collapseDone: localStorage.getItem("collapseDone") !== "0",
   online: true,
@@ -846,6 +921,7 @@ async function api(method, path, body) {
 }
 function toast(msg, kind = "error") {
   const t = $("#toast"); t.textContent = msg; t.className = "toast" + (kind === "ok" ? " ok" : "");
+  void t.offsetWidth; t.classList.add("pop");
   clearTimeout(toast._h); toast._h = setTimeout(() => t.classList.add("hidden"), kind === "ok" ? 2500 : 6000);
 }
 $("#toast").onclick = () => $("#toast").classList.add("hidden");
@@ -909,7 +985,31 @@ function renderJobChip() {
   chip.style.cursor = "pointer"; chip.onclick = () => openProject(j.project);
 }
 // The tab title shows when the agent needs you, even while you're in another tab.
+// Header logo + browser-tab icon follow the run: the check blinks like a cursor
+// while running and turns amber when the agent needs you. Tab icons can't
+// animate, so the icon changes color instead (and gets a dot while running).
+function renderLogoState() {
+  const j = job(), help = !!(j && j.active && j.escalation), run = !!(j && j.active) && !help;
+  document.body.classList.toggle("help", help); document.body.classList.toggle("run", run);
+  const state = help ? "help" : run ? "run" : "idle";
+  if (S.faviconState === state) return;
+  S.faviconState = state;
+  const css = getComputedStyle(document.documentElement), c = (v) => css.getPropertyValue(v).trim();
+  const check = help ? c("--warn") : c("--ok");
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none' stroke-linecap='round' stroke-linejoin='round'>` +
+    `<rect x='2.5' y='2.5' width='27' height='27' rx='7.5' stroke='${c("--accent")}' stroke-width='2.6'/>` +
+    `<path d='M9 10.5l5.5 5.5L9 21.5' stroke='${c("--sky")}' stroke-width='3'/>` +
+    `<path d='M16.5 20.5l2.7 2.7 5.6-6.2' stroke='${check}' stroke-width='3'/>` +
+    (help || run ? `<circle cx='26' cy='6' r='5' fill='${help ? c("--warn") : c("--ok")}' stroke='${c("--bg")}' stroke-width='2'/>` : "") + `</svg>`;
+  $("#favicon").href = "data:image/svg+xml," + encodeURIComponent(svg);
+}
+// Redraw the logo's check (page load, project finished).
+function drawLogo() {
+  const logo = document.querySelector("header .logo"); if (!logo) return;
+  logo.classList.remove("draw"); void logo.getBoundingClientRect(); logo.classList.add("draw");
+}
 function renderTitle() {
+  renderLogoState();
   const j = job(); let t = "OpenHands Supervisor";
   if (j && j.active && j.escalation) t = `⚠ ${j.project} needs help`;
   else if (j && j.active) t = `▶ ${j.project}`;
@@ -923,7 +1023,10 @@ function renderTitle() {
 }
 
 // ---------- views ----------
-function show(tplId) { $("#main").replaceChildren($(tplId).content.cloneNode(true)); }
+function show(tplId) {
+  $("#main").replaceChildren($(tplId).content.cloneNode(true));
+  $("#main").firstElementChild?.classList.add("viewin");
+}
 
 function openWelcome() { S.view = "welcome"; S.current = null; show("#tpl-welcome"); renderSidebar(); }
 
@@ -1063,6 +1166,7 @@ function inline(text) {
   if (last < text.length) nodes.push(text.slice(last));
   return nodes;
 }
+function appendLive(parent, ...nodes) { for (const n of nodes) { n.classList?.add("enter"); parent.append(n); } }
 async function sendIdea() {
   const ta = $("#ic-text"); const text = ta.value.trim();
   if (!text || S.ideas.abort) return;
@@ -1070,10 +1174,11 @@ async function sendIdea() {
   if (!S.ideas.chat) S.ideas.chat = { id: null, title: text.slice(0, 70), messages: [] };
   S.ideas.chat.messages.push({ role: "user", content: text });
   ta.value = ""; ta.style.height = "auto"; renderIdeas();
+  $("#ic-thread .iu:last-of-type")?.classList.add("enter");
   const thread = $("#ic-thread"), abort = new AbortController(); S.ideas.abort = abort;
   $("#ic-send").classList.add("hidden"); $("#ic-stop").classList.remove("hidden");
   // The reply being written: a thinking line, then the answer, then any tool rows.
-  let cur = null, think = null, waiting = toolNode("", "Thinking...", false); waiting.firstChild.replaceChildren(anim("think")); thread.append(waiting);
+  let cur = null, think = null, waiting = toolNode("", "Thinking...", false); waiting.firstChild.replaceChildren(anim("think")); appendLive(thread, waiting);
   const rerender = () => { if (cur) cur.node.replaceChildren(...md(cur.text)); scrollIdeas(false); };
   let pending = false; const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; rerender(); }); } };
   const toolRows = [];
@@ -1081,21 +1186,21 @@ async function sendIdea() {
     if (waiting && ev.type !== "chat") { waiting.remove(); waiting = null; }
     if (ev.type === "chat" && !S.ideas.chat.id) S.ideas.chat.id = ev.id;
     else if (ev.type === "thinking") {
-      if (!think) { think = thinkingNode("", 0, true); thread.append(think); think.started = Date.now(); }
+      if (!think) { think = thinkingNode("", 0, true); appendLive(thread, think); think.started = Date.now(); }
       think.querySelector(".tx").textContent += ev.text; scrollIdeas(false);
     } else if (ev.type === "text") {
       if (think) { think.querySelector("summary").replaceChildren(el("span", { text: `Thought for ${Math.round((Date.now() - think.started) / 1000)}s` })); think = null; }
-      if (!cur) { cur = { text: "", node: el("div", { class: "ia streaming" }) }; thread.append(cur.node); }
+      if (!cur) { cur = { text: "", node: el("div", { class: "ia streaming" }) }; appendLive(thread, cur.node); }
       cur.text += ev.text; schedule();
     } else if (ev.type === "tool") {
       if (cur) { cur.node.classList.remove("streaming"); cur = null; } think = null;
-      const row = toolNode(ev.name, toolLabel(ev.name, ev.args || {}), false); thread.append(row); toolRows.push(row); scrollIdeas(false);
+      const row = toolNode(ev.name, toolLabel(ev.name, ev.args || {}), false); appendLive(thread, row); toolRows.push(row); scrollIdeas(false);
       waiting = toolNode("", "Thinking...", false); waiting.firstChild.replaceChildren(anim("think"));
     } else if (ev.type === "tool_result") {
       const row = toolRows.shift(); if (row) attachResult(row, ev.text);
-      if (waiting) thread.append(waiting);
-    } else if (ev.type === "propose") { thread.append(proposeNode(ev)); scrollIdeas(false); }
-    else if (ev.type === "notice" || ev.type === "error") thread.append(el("div", { class: "inotice" + (ev.type === "error" ? " err" : ""), text: ev.text }));
+      if (waiting) appendLive(thread, waiting);
+    } else if (ev.type === "propose") { appendLive(thread, proposeNode(ev)); scrollIdeas(false); }
+    else if (ev.type === "notice" || ev.type === "error") appendLive(thread, el("div", { class: "inotice" + (ev.type === "error" ? " err" : ""), text: ev.text }));
     else if (ev.type === "done" && ev.title) S.ideas.chat.title = ev.title;
   };
   try {
@@ -1109,7 +1214,7 @@ async function sendIdea() {
       while ((nl = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1); if (line) handle(JSON.parse(line)); }
     }
   } catch (e) {
-    if (e.name === "AbortError") thread.append(el("div", { class: "inotice", text: "Stopped." }));
+    if (e.name === "AbortError") appendLive(thread, el("div", { class: "inotice", text: "Stopped." }));
     else toast(e.message);
   } finally {
     if (waiting) waiting.remove();
@@ -1308,9 +1413,18 @@ async function openProject(name, skipConfirm = false) {
 }
 
 // ---------- tabs ----------
+// The underline slides to the selected tab (it jumps into place the first time).
+function moveInk() {
+  const ink = document.querySelector(".tabs .ink"), on = document.querySelector(".tab.on");
+  if (!ink || !on) return;
+  ink.style.left = `${on.offsetLeft}px`; ink.style.width = `${on.offsetWidth}px`;
+  if (!ink.classList.contains("ready")) requestAnimationFrame(() => ink.classList.add("ready"));
+}
+window.addEventListener("resize", () => moveInk());
 function switchTab(name) {
   S.tab = name; localStorage.setItem("tab", name);
   document.querySelectorAll(".tab").forEach(b => b.classList.toggle("on", b.dataset.tab === name));
+  moveInk();
   for (const t of ["chat", "activity", "files", "stats"]) $(`#pane-${t}`).classList.toggle("hidden", t !== name);
   $("#opt-thinking").classList.toggle("hidden", name !== "chat");
   $("#opt-follow").classList.toggle("hidden", name === "files" || name === "stats");
@@ -1473,6 +1587,7 @@ function addChat(r, isLive) {
     }
   }
   if (!node) return;
+  if (isLive) node.classList.add("enter");
   chat.append(node);
   if (++S.chatCount > 1500) { chat.firstChild.remove(); S.chatCount--; }
 }
@@ -1487,9 +1602,35 @@ function anim(kind) {
   return n;
 }
 // Swap the animation inside `slot` only when the kind changes, so it doesn't restart every second.
+// A slot-machine reel: every activity icon on a vertical strip behind a
+// 22x16 window. When the activity changes, the strip spins down past the other
+// icons and lands on the new one. Three copies of the strip, so each change
+// rolls a full 10-19 icons whichever two icons it moves between.
+const REEL = ["think", "type", "term", "doc", "gear", "scan", "boot", "radar", "plan", "stop"];
+const REEL_H = 16;
 function setAnim(slot, kind) {
   if (slot.dataset.kind === kind) return;
-  slot.dataset.kind = kind; slot.replaceChildren(anim(kind));
+  const n = REEL.length, t = Math.max(0, REEL.indexOf(kind));
+  let reel = slot.querySelector(".reel"), from;
+  if (!reel) {  // a new reel spins in from the last activity shown anywhere
+    reel = el("span", { class: "reel", "aria-hidden": "true" }, el("span", { class: "strip" }));
+    for (let c = 0; c < 3; c++) for (const k of REEL) reel.firstChild.append(anim(k));
+    slot.replaceChildren(reel);
+    from = Math.max(0, REEL.indexOf(S.lastReel || "think"));
+  } else from = Math.max(0, REEL.indexOf(slot.dataset.kind));
+  slot.dataset.kind = kind; S.lastReel = kind;
+  const strip = reel.firstChild, at = (i) => `translateY(${-i * REEL_H}px)`;
+  const settle = () => { strip.style.transition = "none"; strip.style.transform = at(2 * n + t); reel.classList.remove("spinning"); };
+  clearTimeout(reel.settleTimer);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches || from === t) { settle(); return; }
+  // Rest position is the last copy; roll down (content moves down) n..2n-1 icons to the target.
+  strip.style.transition = "none"; strip.style.transform = at(2 * n + from);
+  const target = 2 * n + from - (n + ((from - t + n) % n));
+  void strip.offsetHeight;
+  reel.classList.add("spinning");
+  strip.style.transition = "transform .78s cubic-bezier(.15,.85,.25,1.12)";
+  strip.style.transform = at(target);
+  reel.settleTimer = setTimeout(settle, 820);
 }
 // Which animation fits a tool call: terminal for commands, a page for file edits.
 function toolAnim(summary) {
@@ -1805,6 +1946,29 @@ function renderStats() {
       section("Most-changed files", "turns that changed it", filesList)),
     el("div", { id: "model-sec" }));
   renderTimeline(); renderModel();
+  statsIntro(box);
+}
+// The first time the Stats tab opens for a project: tiles rise in, numbers
+// count up, bars grow. Later live refreshes just update in place.
+function statsIntro(box) {
+  S.statsIntroDone = S.statsIntroDone || new Set();
+  if (S.statsIntroDone.has(S.current)) return;
+  S.statsIntroDone.add(S.current);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  box.classList.add("intro");
+  box.querySelectorAll(".tile").forEach((t, i) => t.style.setProperty("--i", i));
+  box.querySelectorAll(".tl .bar").forEach((b, i) => b.style.setProperty("--i", Math.min(i, 120)));
+  for (const v of box.querySelectorAll(".tile .v")) {
+    const m = v.textContent.match(/^(\d+)(%?)$/); if (!m) continue;  // plain counts and percentages only
+    const end = Number(m[1]), suffix = m[2], t0 = performance.now(), dur = 700;
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / dur), eased = 1 - Math.pow(1 - k, 3);
+      v.textContent = `${Math.round(end * eased)}${suffix}`;
+      if (k < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+  }
+  setTimeout(() => box.classList.remove("intro"), 1600);
 }
 function renderTimeline() {
   const host = $("#tl"); if (!host || !S.stats) return;
@@ -2040,6 +2204,7 @@ function currentMilestoneIndex() {
 }
 
 function renderMilestones() {
+  noteJustDone();
   S.msKey = `${jobHere()}|${currentMilestoneIndex()}`;
   const box = $("#p-ms"); box.replaceChildren();
   const locked = jobHere(); const cur = currentMilestoneIndex();
@@ -2078,7 +2243,7 @@ function renderMilestones() {
       el("label", {}, "Check command (exit code 0 = done)", m.status === "pending" ? suggest : null), check,
       el("label", { text: "Notes / guidance" }), notes, meta,
       S.drafted.has(i) ? el("div", { class: "drafted-note", text: "Drafted by the supervisor. Check that the command really proves this works, then Save." }) : null);
-    const card = el("div", { class: `card ms st-${i === cur ? "current" : m.status}` + (collapsed ? " collapsed" : "") + (S.drafted.has(i) ? " drafted" : "") }, head, body);
+    const card = el("div", { class: `card ms st-${i === cur ? "current" : m.status}` + (collapsed ? " collapsed" : "") + (S.drafted.has(i) ? " drafted" : "") + (S.justDone?.has(i) ? " justdone" : "") }, head, body);
     card.querySelectorAll("input, textarea, select, button:not(.toggle)").forEach(n => n.disabled = locked);
     box.append(card);
   });
@@ -2129,7 +2294,8 @@ function renderProjectChrome() {
     $("#esc-check").textContent = esc.check;
     $("#esc-output").textContent = esc.check_output || "(no output)";
     for (const id of ["#esc-retry", "#esc-skip", "#esc-stop"]) $(id).disabled = !!esc.answered;
-    if (S.escShown !== esc.since) { S.escShown = esc.since; for (const box of [$(".project > .scroll"), $(".project")]) box.scrollTo({ top: 0, behavior: "smooth" }); $("#esc-text").focus({ preventScroll: true }); }
+    if (S.escShown !== esc.since) { S.escShown = esc.since;
+      const card = $("#p-esc"); card.classList.remove("appear"); void card.offsetWidth; card.classList.add("appear"); for (const box of [$(".project > .scroll"), $(".project")]) box.scrollTo({ top: 0, behavior: "smooth" }); $("#esc-text").focus({ preventScroll: true }); }
   }
   // Re-render the editor only when lock/progress state changes, so a live
   // update never steals focus from a field you're typing in.
@@ -2178,7 +2344,26 @@ function renderRail() {
   const rail = $("#p-rail"); if (!rail || !S.draft) return;
   const cur = currentMilestoneIndex();
   rail.replaceChildren(...S.draft.milestones.map((m, i) => el("span", {
-    class: i === cur ? "current" : m.status, title: `${i + 1}. ${m.title || "(untitled)"}: ${i === cur ? "in progress" : m.status}` })));
+    class: (i === cur ? "current" : m.status) + (S.justDone?.has(i) ? " justdone" : ""), style: `--i:${i}`,
+    title: `${i + 1}. ${m.title || "(untitled)"}: ${i === cur ? "in progress" : m.status}` })));
+}
+// Which milestones became "done" since the last time we drew this project, so
+// only those animate (not everything on every redraw, not history on open).
+function noteJustDone() {
+  const key = S.current, done = new Set(S.draft.milestones.map((m, i) => m.status === "done" ? `${i}|${m.title}` : null).filter(Boolean));
+  const before = S.doneSeen && S.doneSeen.key === key ? S.doneSeen.set : null;
+  if (!before) S.justDone = new Set();  // opened another project: nothing "just" happened
+  const fresh = before ? [...done].filter(k => !before.has(k)).map(k => Number(k.split("|")[0])) : [];
+  S.doneSeen = { key, set: done };
+  // Add, don't replace: a second redraw right after must not cancel the animation.
+  for (const i of fresh) { S.justDone.add(i); setTimeout(() => S.justDone.delete(i), 1500); }
+}
+// The whole project finished: a light sweeps the rail, the logo redraws.
+function celebrate() {
+  const rail = $("#p-rail"); if (!rail) return;
+  rail.classList.remove("celebrate"); void rail.offsetWidth; rail.classList.add("celebrate");
+  drawLogo();
+  setTimeout(() => rail.classList.remove("celebrate"), 2200);
 }
 
 function renderRunline() {
@@ -2246,7 +2431,7 @@ async function answer(action) {
 
 // ---------- activity feed ----------
 const time = (ts) => (ts || "").slice(11, 19);
-function addFeed(r) {
+function addFeed(r, isLive) {
   const feed = $("#feed"); if (!feed) return;
   let node = null;
   switch (r.kind) {
@@ -2284,6 +2469,7 @@ function addFeed(r) {
       break;
   }
   if (!node) return;
+  if (isLive) node.classList.add("enter");
   feed.append(node);
   if (++S.feedCount > 2500) { feed.firstChild.remove(); S.feedCount--; }
 }
@@ -2341,9 +2527,10 @@ async function pollEvents() {
             if (S.tab !== "chat") badge("#n-chat", ++S.unreadChat);
             if (ev.role === "tool_result" || ev.role === "check") files = true;
             renderLiveStatus();
-          } else addFeed(ev);
+          } else addFeed(ev, true);
         }
         if (["job", "planning", "contract", "turn", "milestone_start", "skip", "guidance", "review"].includes(ev.kind)) refresh = true;
+        if (ev.kind === "job" && ev.status === "finished" && ev.project === S.current && S.view === "project") setTimeout(celebrate, 700);
         if (["job", "contract", "turn", "milestone_start", "skip", "guidance", "review"].includes(ev.kind) && ev.project === S.current) reload = true;
         if (["turn", "escalate", "guidance", "skip", "contract", "job", "review"].includes(ev.kind) && ev.project === S.current) stats = true;
       }
@@ -2376,6 +2563,7 @@ document.addEventListener("keydown", (e) => {
 });
 window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault(); e.returnValue = ""; } });
 (async () => {
+  drawLogo();
   try { await refreshState(); } catch (e) { toast(e.message); return; }
   S.lastEvent = S.state.last_event;
   const j = job();
