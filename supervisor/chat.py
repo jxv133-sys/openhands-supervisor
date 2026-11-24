@@ -15,10 +15,38 @@ Record shapes (all have "role"; long text is truncated):
 from __future__ import annotations
 
 import json
+import re
 
 TEXT_LIMIT = 8000
 OUTPUT_LIMIT = 6000
 ARG_LIMIT = 6000
+
+
+TERMINAL_TOOLS = ("terminal", "execute_bash", "bash")
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][A-Za-z0-9]|\x1b[=>]")
+_META_RE = re.compile(r"^\[(?:Current working directory|Python interpreter|Command finished with exit code|"
+                      r"The command completed|The command has no new output)[^\n]*\]\s*$")
+_EXIT_RE = re.compile(r"exit code (-?\d+)")
+
+
+def clean_terminal(text: str) -> tuple[str, int | None]:
+    """Terminal output as a person reads it: no color codes, no carriage-return
+    progress redraws, and without the bookkeeping lines the SDK adds for the
+    model ("[Current working directory: ...]", "[Command finished with exit
+    code N]"). Returns (text, exit code found in those lines or None)."""
+    text = _ANSI_RE.sub("", text or "").replace("\r\n", "\n")
+    exit_code = None
+    lines = []
+    for line in text.split("\n"):
+        if "\r" in line:  # progress bars redraw the line: keep what was shown last
+            line = [part for part in line.split("\r") if part][-1] if line.strip("\r") else ""
+        if _META_RE.match(line.strip()):
+            m = _EXIT_RE.search(line)
+            if m:
+                exit_code = int(m.group(1))
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip("\n"), exit_code
 
 
 def _cut(text: str, limit: int) -> str:
@@ -101,15 +129,17 @@ def chat_record(event) -> dict | None:
 
     if kind == "ObservationEvent":
         observation = getattr(event, "observation", None)
+        tool = getattr(event, "tool_name", "")
         text = _texts(getattr(observation, "to_llm_content", None))
         if not text and observation is not None:
             text = str(getattr(observation, "text", "") or "")
-        return {
-            "role": "tool_result",
-            "action_id": str(getattr(event, "action_id", "")),
-            "tool": getattr(event, "tool_name", ""),
-            "text": _cut(text, OUTPUT_LIMIT),
-        }
+        record = {"role": "tool_result", "action_id": str(getattr(event, "action_id", "")), "tool": tool}
+        if tool in TERMINAL_TOOLS:
+            text, exit_code = clean_terminal(text)
+            code = getattr(observation, "exit_code", None)
+            record["exit_code"] = code if isinstance(code, int) else exit_code
+        record["text"] = _cut(text, OUTPUT_LIMIT)
+        return record
 
     if kind == "AgentErrorEvent":
         return {"role": "system", "level": "error", "text": _cut(str(getattr(event, "error", "")), 2000)}

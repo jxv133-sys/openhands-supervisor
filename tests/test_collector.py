@@ -94,3 +94,29 @@ def test_reset_clears_turn():
 def test_wait_until_quiet_returns():
     c = TurnCollector()
     c.wait_until_quiet(quiet_seconds=0.05, max_wait=1)
+
+
+def test_clean_terminal_output():
+    from supervisor.chat import chat_record, clean_terminal
+
+    E = "\x1b"
+    raw = (f"{E}[1m{E}[32m   Compiling{E}[0m todo\r\nDownloading 10%\rDownloading 100%\n"
+           "[Current working directory: /workspace/project]\n[Python interpreter: /usr/bin/python3]\n"
+           "[Command finished with exit code 101]")
+    assert clean_terminal(raw) == ("   Compiling todo\nDownloading 100%", 101)
+    assert clean_terminal("plain output") == ("plain output", None)
+
+    class Content:
+        text = raw
+
+    class Obs:
+        to_llm_content = [Content()]
+        exit_code = 101
+
+    class ObservationEvent:
+        action_id = "a1"
+        tool_name = "terminal"
+        observation = Obs()
+
+    rec = chat_record(ObservationEvent())
+    assert rec["exit_code"] == 101 and "\x1b" not in rec["text"] and "working directory" not in rec["text"]

@@ -532,6 +532,21 @@
   .pmenu hr { border: none; border-top: 1px solid var(--line-soft); margin: 4px 2px; }
   .vh button { padding: 1px 9px; font-size: 12px; }
 
+  /* terminal steps */
+  .mono, pre, code, .cmd { font-variant-ligatures: none; }
+  .cmdbox { padding: 2px 10px 6px; }
+  pre.cmd { margin: 4px 0 2px; max-height: none; background: color-mix(in oklab, var(--bg) 60%, black 40%); border-color: var(--line-soft);
+    color: var(--text); font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  pre.cmd .prompt { color: var(--ok); font-weight: 700; user-select: none; }
+  .cmdflags { font-size: 11.5px; color: var(--dim); margin-top: 2px; }
+  button.linkish { background: none; border: none; color: var(--accent); padding: 2px 0; font-size: 12px; }
+  button.linkish:hover:not(:disabled) { background: none; text-decoration: underline; }
+  pre.out { font-size: 12px; line-height: 1.5; }
+  .exitb { margin-left: 8px; font-size: 11px; padding: 0 6px; border-radius: 999px; border: 1px solid var(--border); font-weight: 600; }
+  .exitb.ok { color: var(--ok); border-color: var(--ok-line); } .exitb.bad { color: var(--bad); border-color: var(--bad-line); }
+  .exitb.run { color: var(--warn); border-color: var(--warn-line); }
+  details.empty > summary { cursor: default; list-style: none; } details.empty > summary::-webkit-details-marker { display: none; }
+
   /* drafting a milestone */
   .composer { border-style: dashed; border-color: var(--accent-line); background: transparent; }
   .composer textarea { min-height: 60px; }
@@ -1340,11 +1355,50 @@ function tookText(sec) {
   if (sec == null || !isFinite(sec) || sec < 0 || sec > 3 * 3600) return "";
   return sec < 1 ? "<1s" : duration(sec);
 }
+const TERMINAL_TOOLS = ["terminal", "execute_bash", "bash"];
+// Terminal output as a person reads it (mirrors chat.clean_terminal on the server).
+function cleanTerm(raw) {
+  let exit = null;
+  const text = String(raw)
+    .replace(/\x1b\[[0-9;?]*[ -\/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[()][A-Za-z0-9]|\x1b[=>]/g, "")
+    .replace(/\r\n/g, "\n").split("\n")
+    .map(l => l.includes("\r") ? (l.split("\r").filter(Boolean).pop() || "") : l)
+    .filter(l => {
+      if (!/^\[(Current working directory|Python interpreter|Command finished with exit code|The command completed|The command has no new output)[^\n]*\]\s*$/.test(l.trim())) return true;
+      const m = l.match(/exit code (-?\d+)/); if (m) exit = Number(m[1]);
+      return false;
+    }).join("\n").replace(/^\n+|\n+$/g, "");
+  return { text, exit };
+}
+// A shell command the way a terminal shows it: "$ " prompt, line breaks kept,
+// long scripts (heredocs) folded. The usual "cd /workspace/project && " is
+// dropped: that's always the project folder.
+function commandBlock(args) {
+  const cmd = String(args.command).replace(/^cd \/workspace\/project\s*(&&|;)\s*/, "");
+  const lines = cmd.split("\n");
+  const pre = el("pre", { class: "cmd" }, el("span", { class: "prompt", text: "$ " }), lines.slice(0, 8).join("\n"));
+  const box = el("div", { class: "cmdbox" }, pre);
+  if (lines.length > 8) {
+    const more = el("button", { class: "small linkish", text: `show all ${lines.length} lines` });
+    more.onclick = () => {
+      const all = more.dataset.all !== "1"; more.dataset.all = all ? "1" : "0";
+      pre.replaceChildren(el("span", { class: "prompt", text: "$ " }), (all ? lines : lines.slice(0, 8)).join("\n"));
+      more.textContent = all ? "show less" : `show all ${lines.length} lines`;
+    };
+    box.append(more);
+  }
+  const flags = [args.is_input ? "input to the running program" : "", args.timeout ? `timeout ${args.timeout}s` : "", args.reset ? "reset terminal" : ""].filter(Boolean);
+  if (flags.length) box.append(el("div", { class: "cmdflags", text: flags.join(" · ") }));
+  return box;
+}
 function addChat(r, isLive) {
   const chat = $("#chat"); if (!chat) return;
   // What the agent is doing now, for the live status line.
   S.lastRole = r.role === "system" && r.level !== "divider" ? S.lastRole : r.role;
-  if (r.role === "tool_call") S.lastSummary = r.summary;
+  if (r.role === "tool_call") {  // first line only, without the usual "cd /workspace/project &&"
+    const first = String(r.summary || "").replace(/^\$ cd \/workspace\/project\s*(&&|;)\s*/, "$ ").split("\n")[0];
+    S.lastSummary = first + (String(r.summary || "").includes("\n") ? " …" : "");
+  }
   if (r.role === "system" && r.level === "divider") S.phase = /^Final review/.test(r.text) ? "review" : "milestone";
   S.lastActivityAt = isLive ? Date.now() : (S.lastActivityAt || Date.now());
   if (S.chatCount === 0) chat.replaceChildren();
@@ -1367,28 +1421,38 @@ function addChat(r, isLive) {
     case "agent":
       node = el("div", { class: "msg agent" }, el("div", { class: "who" }, "Agent", took(since)), thinkingBlock(r.thinking), ...collapsible(r.text));
       break;
-    case "tool_call":
-      node = el("div", { class: "msg tool" },
+    case "tool_call": {
+      const isTerm = TERMINAL_TOOLS.includes(r.tool) && r.args && typeof r.args.command === "string";
+      node = el("div", { class: "msg tool" + (isTerm ? " term" : "") },
         el("div", { class: "who" }, r.tool, took(since)),
         thinkingBlock(r.thinking),
-        el("div", { class: "summary", text: r.summary }),
+        isTerm ? commandBlock(r.args) : el("div", { class: "summary", text: r.summary }),
         callArgsBlock(r));
       if (r.call_id) { S.calls.set(r.call_id, node); node.dataset.at = at ?? ""; }
       break;
+    }
     case "tool_result": {
-      const text = r.text || "(no output)";
-      const lines = text.split("\n").length;
+      const term = TERMINAL_TOOLS.includes(r.tool);
+      // Older records weren't cleaned on the server: clean them here too.
+      const cleaned = term ? cleanTerm(r.text || "") : { text: r.text || "", exit: null };
+      const exit = term ? (r.exit_code ?? cleaned.exit) : null;
+      const text = cleaned.text;
+      const lines = text ? text.split("\n").length : 0;
       const call = S.calls.get(r.action_id);
       const ran = call && call.dataset.at && at != null ? tookText((at - Number(call.dataset.at)) / 1000) : "";
-      const out = el("details", {}, el("summary", { title: when ? `finished ${when}` : "",
-        text: `output (${lines} line${lines === 1 ? "" : "s"})${ran ? ` · ran ${ran}` : ""}` }), el("pre", { class: "mono", text }));
-      if (lines <= 6 && text.length < 600) out.open = true;
+      const failed = exit != null && exit !== 0;
+      const label = el("summary", { title: when ? `finished ${when}` : "" },
+        text ? `output (${lines} line${lines === 1 ? "" : "s"})` : "no output", ran ? ` · ran ${ran}` : "",
+        exit != null ? el("span", { class: "exitb " + (exit === 0 ? "ok" : exit === -1 ? "run" : "bad"),
+          text: exit === 0 ? "✓ exit 0" : exit === -1 ? "still running" : `✗ exit ${exit}` }) : null);
+      const out = el("details", { class: text ? "" : "empty" }, label, text ? el("pre", { class: "mono out", text }) : null);
+      if (text && (failed || (lines <= 8 && text.length < 800))) out.open = true;
       if (call) { call.append(out); S.calls.delete(r.action_id); scrollFeed(false); return; }
       node = el("div", { class: "msg tool" }, el("div", { class: "who" }, `${r.tool} result`), out);
       break;
     }
     case "check": {
-      const out = el("details", {}, el("summary", { text: "check output" }), el("pre", { class: "mono", text: r.text || "(no output)" }));
+      const out = el("details", {}, el("summary", { text: "check output" }), el("pre", { class: "mono out", text: cleanTerm(r.text || "").text || "(no output)" }));
       if (!r.passed) out.open = true;
       node = el("div", { class: "msg check " + (r.passed ? "ok" : "bad") },
         el("div", { class: "who" }, r.passed ? "✓ check passed" : `✗ check failed (exit ${r.exit_code})`, took(r.seconds ?? null)),
