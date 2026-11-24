@@ -19,6 +19,7 @@ The supervisor does what you were doing by hand:
 | makes no progress for 4 turns (no file changed, same check result), even across restarts, or spends 400K tokens that way | asks you, with what it kept repeating and its latest reasoning |
 | replies `STUCK: ...` (it's told to when it runs out of ideas) | asks you right away |
 | still can't do it after 3 restarts | asks you for guidance (type a hint, skip, or quit) |
+| ...and nobody answers within 3 minutes (you're asleep) | diagnoses the problem itself with a fresh model call (check output, code, notes, what was tried) and retries with that as guidance; after 2 such tries, or if the milestone can't be done as specified, skips it and carries on. **Wait for me** on the help card (or starting to type) holds the countdown |
 
 When the last milestone is done, a **final review** checks the project as a
 whole, again with real commands:
@@ -163,7 +164,8 @@ docker compose run --rm supervisor status todo-rs
 ```
 
 `auto` reads `PROJECT`, `REVIEW_PLAN` (1 = stop after planning) and
-`ON_ESCALATE` (`stop` or `skip`) from `.env`. `GOAL`, if set, is used instead
+`ON_ESCALATE` (`auto`, the default: diagnose and retry by itself, then skip;
+`stop`; or `skip`) from `.env`. `GOAL`, if set, is used instead
 of `goal.md`.
 
 How it works: the supervisor container gets the host's Docker socket, so the

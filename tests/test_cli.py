@@ -50,7 +50,7 @@ def test_auto_plans_then_runs(tmp_path, monkeypatch):
     monkeypatch.setattr("supervisor.planner.plan", _fake_plan)
     assert main(["--config", "none.toml", "auto"]) == 0
     assert Contract.path_for(tmp_path / "demo").exists()
-    assert FakeSupervisor.calls == [("demo", "build a thing", "stop")]
+    assert FakeSupervisor.calls == [("demo", "build a thing", "auto")]  # unattended: resolve by itself
 
 
 def test_auto_review_plan_stops_before_running(tmp_path, monkeypatch, capsys):

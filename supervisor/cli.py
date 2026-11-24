@@ -88,7 +88,7 @@ def cmd_auto(args, settings: Settings) -> int:
     goal_file = Path(os.environ.get("GOAL_FILE", "").strip() or "goal.md")
     # $GOAL (if set) overrides goal.md, for one-off runs without editing the file.
     goal = os.environ.get("GOAL", "").strip() or read_goal(goal_file)
-    on_escalate = os.environ.get("ON_ESCALATE", "").strip().lower() or "stop"
+    on_escalate = os.environ.get("ON_ESCALATE", "").strip().lower() or "auto"
     if on_escalate not in ESCALATE_MODES:
         print(f"ON_ESCALATE must be one of {', '.join(ESCALATE_MODES)}, not {on_escalate!r}")
         return 1
@@ -175,9 +175,10 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("-y", "--yes", action="store_true", help="don't ask before starting")
     r.add_argument(
         "--on-escalate",
-        choices=["ask", "stop", "skip"],
+        choices=["ask", "stop", "skip", "auto"],
         default="ask",
-        help="when the agent can't finish a milestone: ask you (default), stop, or skip it",
+        help="when the agent can't finish a milestone: ask you (default), stop, skip it, "
+             "or auto (diagnose and retry by itself, skip after auto_resolve_attempts)",
     )
     r.set_defaults(func=cmd_run)
 

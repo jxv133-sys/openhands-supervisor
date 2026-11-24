@@ -38,7 +38,7 @@ def _bash(cmd: str) -> str:
     return f"bash -lc {shlex.quote('set -o pipefail; ' + cmd)}"
 
 
-ESCALATE_MODES = ("ask", "stop", "skip")
+ESCALATE_MODES = ("ask", "stop", "skip", "auto")
 
 # A custom escalation handler (used by the web UI) gets
 # (milestone, decision, check) and returns one of:
@@ -593,6 +593,8 @@ class Supervisor:
         if mode == "skip":
             self.log.say(f"Agent can't finish '{milestone.title}' ({decision.reason}). Skipping it (ON_ESCALATE=skip).")
             action, text = "skip", ""
+        elif mode == "auto":
+            action, text = "auto", ""
         elif mode == "stop":
             self.log.say(
                 f"Agent needs help with '{milestone.title}': {decision.reason}\n"
@@ -606,6 +608,8 @@ class Supervisor:
         else:
             action, text = self._ask_terminal(milestone, decision, check)
 
+        if action == "auto":  # nobody answered: work it out ourselves
+            action, text = self._auto_resolve(milestone, decision, check, state)
         if action == "stop":
             raise Quit()
         if action == "skip":
@@ -624,6 +628,55 @@ class Supervisor:
         self.log.event("guidance", title=milestone.title, note=text)
         self.log.say(f"Retrying '{milestone.title}' with your guidance.")
         return False
+
+    def _auto_resolve(self, milestone: Milestone, decision: Decision, check: CheckResult,
+                      state: MilestoneState) -> tuple[str, str]:
+        """Stand in for an absent user: a fresh diagnosis as guidance, or skip
+        the milestone once the attempts are used up (or it can't be done)."""
+        from . import rescue, review
+
+        n = self.contract.index_of(milestone)
+        limit = self.settings.auto_resolve_attempts
+        if state.auto_resolves >= limit:
+            msg = (f"Nobody answered and {limit} automatic fix attempt(s) didn't get '{milestone.title}' to pass. "
+                   "Skipping it so the run can go on; you can re-open it later.")
+            self.log.say(msg)
+            self.log.event("auto_resolve", title=milestone.title, outcome="skip", reason="attempts used up")
+            self.log.chat({"role": "system", "level": "error", "text": msg}, milestone=n)
+            return "skip", ""
+        state.auto_resolves += 1
+        attempt = f"{state.auto_resolves}/{limit}"
+        self.log.say(f"Nobody answered: diagnosing '{milestone.title}' automatically (attempt {attempt}).")
+        try:
+            tree, sources = review.gather_sources(self.project_dir, budget_chars=16_000)
+            found = rescue.ask_rescuer(
+                rescue.rescue_prompt(
+                    goal=self.contract.goal, title=milestone.title, instructions=milestone.instructions,
+                    check=milestone.check, reason=decision.reason,
+                    details=decision.message if decision.message != decision.reason else "",
+                    check_output=check.output, tried=list(milestone.notes), notes=self._read_notes(),
+                    tree=tree, sources=sources),
+                self.settings.ollama_url, self.settings.model, self.settings.llm_timeout)
+        except Exception as exc:  # the model is down or answered nonsense: still don't sit idle
+            self.log.event("auto_resolve", title=milestone.title, outcome="fallback", error=f"{type(exc).__name__}: {exc}")
+            found = rescue.Rescue(
+                diagnosis=f"(automatic diagnosis failed: {type(exc).__name__})",
+                guidance="Start over from the evidence. Run the check once, read its output to the end, and fix the "
+                         "first real error it names. Don't repeat what you already tried; if an approach failed twice, "
+                         "take a different one.")
+        if found.give_up:
+            msg = f"Automatic diagnosis: '{milestone.title}' can't be done as specified, skipping it.\n{found.diagnosis}"
+            self.log.say(msg)
+            self.log.event("auto_resolve", title=milestone.title, outcome="give_up", diagnosis=found.diagnosis)
+            self.log.chat({"role": "system", "level": "error", "text": msg}, milestone=n)
+            return "skip", ""
+        text = (f"[Automatic diagnosis {attempt}; the user was away] {found.diagnosis}\n"
+                f"What to do: {found.guidance}").strip()
+        self.log.event("auto_resolve", title=milestone.title, outcome="guidance", attempt=state.auto_resolves,
+                       diagnosis=found.diagnosis, guidance=found.guidance)
+        self.log.chat({"role": "system", "level": "info",
+                       "text": f"Nobody answered, so the supervisor diagnosed it (attempt {attempt}):\n{text}"}, milestone=n)
+        return "guidance", text
 
     def _ask_terminal(self, milestone: Milestone, decision: Decision, check: CheckResult) -> tuple[str, str]:
         print("\n" + "=" * 70 + f"\nThe agent needs help with: {milestone.title}\nReason: {decision.reason}\n")

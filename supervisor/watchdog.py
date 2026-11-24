@@ -93,6 +93,7 @@ class MilestoneState:
     tokens_since_progress: int = 0
     progress_sig: str = ""  # check result last time something moved
     stagnation_warned: bool = False
+    auto_resolves: int = 0  # times the supervisor answered for an absent user
 
     def human_stepped_in(self) -> None:
         self.no_progress_turns = 0

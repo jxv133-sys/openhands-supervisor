@@ -28,7 +28,7 @@ services:
       # Used by `auto` mode only:
       PROJECT: ${PROJECT:-project}
       REVIEW_PLAN: ${REVIEW_PLAN:-0}
-      ON_ESCALATE: ${ON_ESCALATE:-stop}
+      ON_ESCALATE: ${ON_ESCALATE:-auto}
       GOAL_FILE: /config/goal.md
       SUPERVISOR_CONFIG: /config/supervisor.toml
     volumes:

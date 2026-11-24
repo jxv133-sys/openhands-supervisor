@@ -67,6 +67,11 @@ SCHEMA: list[dict] = [
          help="Let the Ideas chat fetch public web pages (never addresses on your network)."),
     dict(key="chat_think", group="Ideas chat", label="Thinking", type="optbool",
          help="Model default, or force thinking on/off. Off makes thinking models answer faster."),
+    dict(key="auto_resolve_after", group="Runs", label="Auto-resolve after (seconds)", type="int", min=0, max=86_400,
+         help="When the agent needs help and nobody answers this long, the supervisor diagnoses the problem itself "
+              "and retries with that. 0 = always wait for you."),
+    dict(key="auto_resolve_attempts", group="Runs", label="Auto-resolve attempts", type="int", min=0, max=20,
+         help="Automatic diagnoses per milestone; after that it's skipped so an unattended run keeps going."),
     # --- Limits
     dict(key="limits.max_turns_per_conversation", group="Limits", label="Turns per conversation", type="int", min=1, max=100,
          help="After this many turns the milestone restarts in a fresh conversation (long ones confuse small models)."),

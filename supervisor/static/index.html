@@ -663,6 +663,9 @@
     .filelist { border-right: none; border-bottom: 1px solid var(--border); }
     #model { display: none; }
   }
+  .autoline { display: flex; gap: 8px; align-items: center; margin-top: 10px; padding-top: 10px;
+              border-top: 1px dashed var(--line-soft); font-size: 12.5px; color: var(--dim); }
+  .autoline b { color: var(--warn); font-variant-numeric: tabular-nums; }
   /* header settings button */
   .iconbtn { padding: 4px 7px; line-height: 0; background: transparent; border-color: transparent; color: var(--dim); }
   .iconbtn:hover, .iconbtn.on { color: var(--accent); border-color: var(--accent-line); }
@@ -866,6 +869,11 @@
           <button class="primary" id="esc-retry" title="Ctrl+Enter">Retry with guidance</button>
           <button id="esc-skip">Skip milestone</button>
           <button class="danger" id="esc-stop">Stop run</button>
+        </div>
+        <div class="autoline hidden" id="esc-auto">
+          <span class="grow" id="esc-autotext"></span>
+          <button class="small" id="esc-hold" title="Don't resolve this one automatically; wait for my answer">Wait for me</button>
+          <button class="small" id="esc-autonow" title="Let the supervisor diagnose it now">Resolve now</button>
         </div>
       </div>
       <div class="card">
@@ -1455,6 +1463,10 @@ async function openProject(name, skipConfirm = false) {
   $("#jump").onclick = () => { $("#f-follow").checked = true; scrollFeed(true); };
   $("#esc-skip").onclick = () => answer("skip");
   $("#esc-stop").onclick = () => answer("stop");
+  $("#esc-hold").onclick = () => holdEscalation(true);
+  $("#esc-autonow").onclick = () => answer("auto");
+  // Typing an answer pauses the countdown, so it can't fire mid-sentence.
+  $("#esc-text").addEventListener("input", () => { if ($("#esc-text").value.trim()) holdEscalation(false); });
   $("#f-thinking").checked = localStorage.getItem("showThinking") === "1";
   $("#f-thinking").onchange = () => {
     localStorage.setItem("showThinking", $("#f-thinking").checked ? "1" : "0");
@@ -2348,6 +2360,7 @@ function renderProjectChrome() {
     $("#esc-ms").textContent = esc.milestone;
     $("#esc-reason").textContent = esc.reason;
     $("#esc-agentwrap").classList.toggle("hidden", !esc.agent_text);
+    renderAutoLine();
     $("#esc-agent").textContent = esc.agent_text || "";
     $("#esc-check").textContent = esc.check;
     $("#esc-output").textContent = esc.check_output || "(no output)";
@@ -2446,7 +2459,28 @@ function renderRunline() {
   box.replaceChildren(...nodes);
   box.classList.remove("hidden");
 }
-setInterval(() => { if (S.view === "project" && jobActive()) { renderRunline(); if (job().escalation) $("#esc-since").textContent = `(waiting ${duration(Date.now() / 1000 - job().escalation.since)})`; } }, 1000);
+setInterval(() => { if (S.view === "project" && jobActive()) { renderRunline(); if (job().escalation) { $("#esc-since").textContent = `(waiting ${duration(Date.now() / 1000 - job().escalation.since)})`; renderAutoLine(); } } }, 1000);
+function renderAutoLine() {
+  const box = $("#esc-auto"); if (!box) return;
+  const e = jobHere() && job().escalation;
+  box.classList.toggle("hidden", !e || e.answered);
+  if (!e) return;
+  const left = e.auto_at ? Math.max(0, Math.ceil(e.auto_at - Date.now() / 1000)) : null;
+  const t = $("#esc-autotext"); t.replaceChildren();
+  if (left == null) t.append("Waiting for your answer (no automatic resolve for this one).");
+  else if (left > 0) t.append("No answer? In ", el("b", { text: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` }),
+    " the supervisor diagnoses it itself and retries.");
+  else t.append("Diagnosing it automatically…");
+  $("#esc-hold").classList.toggle("hidden", left == null || left === 0);
+}
+async function holdEscalation(loud) {
+  const e = jobHere() && job().escalation;
+  if (!e || !e.auto_at || S.holding) return;
+  S.holding = true;
+  try { await api("POST", "/api/answer", { action: "hold", text: "" }); e.auto_at = null; renderAutoLine(); if (loud) toast("OK, it waits for your answer.", "ok"); }
+  catch (err) { if (loud) toast(err.message); }
+  finally { S.holding = false; }
+}
 
 // ---------- actions ----------
 async function save(quiet) {
@@ -2479,10 +2513,12 @@ async function answer(action) {
   if (action === "guidance" && !text.trim()) { $("#esc-text").focus(); return toast("Write some guidance first."); }
   if (action === "stop" && !confirm("Stop the run? Progress is saved.")) return;
   if (action === "skip" && !confirm("Skip this milestone and move on to the next one?")) return;
+  if (action === "auto" && !confirm("Let the supervisor diagnose this itself and retry?")) return;
   for (const id of ["#esc-retry", "#esc-skip", "#esc-stop"]) $(id).disabled = true;
   try {
     await api("POST", "/api/answer", { action, text }); $("#esc-text").value = "";
-    toast(action === "guidance" ? "Guidance sent; the agent retries this milestone fresh." : action === "skip" ? "Milestone skipped." : "Stopping...", "ok");
+    toast(action === "guidance" ? "Guidance sent; the agent retries this milestone fresh." : action === "skip" ? "Milestone skipped."
+      : action === "auto" ? "Diagnosing it automatically..." : "Stopping...", "ok");
     await refreshState();
   } catch (e) { toast(e.message); for (const id of ["#esc-retry", "#esc-skip", "#esc-stop"]) $(id).disabled = false; }
 }

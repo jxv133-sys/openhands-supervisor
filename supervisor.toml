@@ -41,6 +41,11 @@ check_timeout = 900
 # times that repeats; 0 = review and report only, add no milestones.
 final_review = true
 review_rounds = 2
+# When the agent needs help and nobody answers within auto_resolve_after seconds,
+# the supervisor diagnoses the problem itself and retries with that; after
+# auto_resolve_attempts tries it skips the milestone. 0 = always wait for you.
+auto_resolve_after = 180
+auto_resolve_attempts = 2
 
 [limits]
 max_turns_per_conversation = 8

@@ -48,6 +48,12 @@ class Settings:
     # The agent keeps AGENTS.md (project notes) up to date and sees it at the
     # start of every milestone, so fresh conversations don't forget decisions.
     notes: bool = True
+    # When the agent needs help and nobody answers within this many seconds,
+    # the supervisor diagnoses the problem itself (one model call) and retries
+    # with that as guidance; after `auto_resolve_attempts` such tries it skips
+    # the milestone so an unattended run keeps going. 0 = always wait for you.
+    auto_resolve_after: int = 180
+    auto_resolve_attempts: int = 2
     limits: Limits = field(default_factory=Limits)
 
     @property

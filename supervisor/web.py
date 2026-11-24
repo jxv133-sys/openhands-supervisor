@@ -166,16 +166,38 @@ class Job:
             "restarts": getattr(milestone, "restarts", 0),
             "since": time.time(),
         }
+        after = getattr(self.app.settings, "auto_resolve_after", 0) or 0
+        # Unanswered for `after` seconds: the supervisor works it out itself, so
+        # an unattended (overnight) run doesn't sit idle. "Wait for me" holds it.
+        self.escalation["auto_at"] = self.escalation["since"] + after if after > 0 else None
         self._publish()
         try:
-            return self._answers.get()
+            while True:
+                deadline = self.escalation.get("auto_at")
+                wait = None if deadline is None else max(0.0, deadline - time.time())
+                try:
+                    return self._answers.get(timeout=None if wait is None else min(wait, 1.0))
+                except queue.Empty:
+                    pass
+                with self._lock:
+                    deadline = self.escalation.get("auto_at")
+                    if deadline is not None and time.time() >= deadline and not self.escalation.get("answered"):
+                        self.escalation["answered"] = "auto"
+                        return ("auto", "")
         finally:
             self.escalation = None
             self._publish()
 
     def answer(self, action: str, text: str) -> None:
-        if action not in ("guidance", "skip", "stop"):
-            raise ApiError(HTTPStatus.BAD_REQUEST, "action must be guidance, skip or stop")
+        if action not in ("guidance", "skip", "stop", "hold", "auto"):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "action must be guidance, skip, stop, hold or auto")
+        if action == "hold":  # "Wait for me": no automatic answer for this question
+            with self._lock:
+                if self.escalation is None or self.escalation.get("answered"):
+                    raise ApiError(HTTPStatus.CONFLICT, "the agent is not waiting for an answer")
+                self.escalation["auto_at"] = None
+            self._publish()
+            return
         if action == "guidance" and not text.strip():
             raise ApiError(HTTPStatus.BAD_REQUEST, "write some guidance first")
         with self._lock:
