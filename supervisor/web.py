@@ -679,6 +679,11 @@ def make_handler(app: App, token: str | None):
                     raise ApiError(HTTPStatus.UNAUTHORIZED, "token required")
                 route = parts[1:]
 
+                if method == "GET" and route == ["model"]:
+                    from . import modelinfo
+
+                    fresh = (parse_qs(url.query).get("fresh") or ["0"])[0] == "1"
+                    return self._json(HTTPStatus.OK, modelinfo.fetch(app.settings, use_cache=not fresh))
                 if method == "GET" and route == ["state"]:
                     return self._json(HTTPStatus.OK, app.state())
                 if method == "GET" and route == ["events"]:

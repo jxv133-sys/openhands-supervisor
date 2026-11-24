@@ -114,6 +114,11 @@ Then open **http://<that-machine>:8765** in a browser.
   remove it from the supervisor and keep the code, or delete the folder with
   the code (type the name to confirm). A project that's still being planned
   can be cancelled from the sidebar. Single files download from the *Files* tab.
+- **Stats → Model** describes the model from Ollama: name, architecture,
+  parameters, quantization, size on disk, memory use (and how much is on the
+  GPU), capabilities, sampling, and its context window, with a warning if
+  Ollama's context is smaller than what the supervisor sends (prompts would be
+  cut) or larger than the model was trained for.
 - **Chat** shows how long each step took: the model's time for a reply or tool
   call, how long a command ran, how long a check took. Hover for the time.
 - **Stop** any time; progress is saved, *Run* resumes. Runs keep going when you
