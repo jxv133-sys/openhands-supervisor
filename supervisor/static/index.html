@@ -4,28 +4,33 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenHands Supervisor</title>
-<link rel="icon" id="favicon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.5' y='2.5' width='27' height='27' rx='7.5' stroke='%23b7a6ff' stroke-width='2.6'/%3E%3Cpath d='M9 10.5l5.5 5.5L9 21.5' stroke='%237cc4f2' stroke-width='3'/%3E%3Cpath d='M16.5 20.5l2.7 2.7 5.6-6.2' stroke='%235ed3a1' stroke-width='3'/%3E%3C/svg%3E">
+<link rel="icon" id="favicon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M16 2.8c-7.6 0-11.8 5.3-11.8 11.4 0 4 2 6.6 4.6 8v4.2c0 1.5 1 2.6 2.6 2.6h9.2c1.6 0 2.6-1.1 2.6-2.6v-4.2c2.6-1.4 4.6-4 4.6-8C27.8 8.1 23.6 2.8 16 2.8z' fill='%230b0f0d' stroke='%23e7eee9' stroke-width='2.4'/%3E%3Cpath d='M8.6 12.2l3.6 3-3.6 3' stroke='%2352c98f' stroke-width='2.6'/%3E%3Crect x='17.8' y='12.4' width='5.2' height='5.6' rx='1.2' fill='%2352c98f'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- Falls back to system fonts when offline. -->
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
-  /* "Spruce & lilac": a night-shift foreman's console. Spruce greens for the
-     room, bone for text, lilac for your actions and the supervisor's voice,
-     sky for the agent's voice; mint / coral / gold only ever mean
-     passed / failed / needs you. */
+  /* "Evergreen": a calm code-editor dark. Near-black with a hint of green,
+     layered like an IDE's panels; no glow, no neon. Every color means one thing:
+       jade   your actions and the supervisor's voice (--accent for text and
+              lines, --btn for button fills: two shades so both stay readable)
+       leaf   passed / done (a warmer green, always with its ✓)
+       sky    the agent's voice
+       amber  needs you (the only amber on screen)
+       coral  failed */
   :root {
-    --bg: #0e1b1d; --panel: #132427; --panel2: #183034; --border: #24403f; --line-soft: #1b3235;
-    --text: #ece8dc; --dim: #8fa7a2; --faint: #557370;
-    --accent: #b7a6ff; --accent2: #9d8af5; --on-accent: #17122e; --sky: #7cc4f2;
-    --ok: #5ed3a1; --warn: #f2c14e; --bad: #ff7b6c; --purple: var(--accent);
+    --bg: #0b0f0d; --panel: #111814; --panel2: #162019; --border: #26342b; --line-soft: #1b251f;
+    --text: #e7eee9; --dim: #98aa9e; --faint: #5c6e62;
+    --accent: #52c98f; --accent2: #1d7a4f; --btn: #1d7a4f; --on-accent: #f4fff9; --sky: #8cbfe0;
+    --ok: #a8dc7c; --warn: #e8b95a; --bad: #f2796b; --purple: var(--accent);
     --ok-line: color-mix(in oklab, var(--ok) 38%, var(--panel)); --bad-line: color-mix(in oklab, var(--bad) 40%, var(--panel));
     --warn-line: color-mix(in oklab, var(--warn) 40%, var(--panel)); --accent-line: color-mix(in oklab, var(--accent) 38%, var(--panel));
     --sky-line: color-mix(in oklab, var(--sky) 34%, var(--panel));
     --ok-bg: color-mix(in oklab, var(--ok) 10%, var(--bg)); --bad-bg: color-mix(in oklab, var(--bad) 12%, var(--bg));
-    --warn-bg: color-mix(in oklab, var(--warn) 9%, var(--bg)); --accent-bg: color-mix(in oklab, var(--accent) 14%, var(--bg));
-    --sans: "Schibsted Grotesk", "Segoe UI", system-ui, sans-serif;
+    --warn-bg: color-mix(in oklab, var(--warn) 9%, var(--bg)); --accent-bg: color-mix(in oklab, var(--accent) 12%, var(--bg));
+    --sans: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+    --display: var(--sans);
     --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    --r-lg: 14px; --r-md: 10px; --r-sm: 7px;
+    --r-lg: 10px; --r-md: 8px; --r-sm: 6px;
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
@@ -35,7 +40,7 @@
     padding: 6px 12px; cursor: pointer; }
   button:hover:not(:disabled) { border-color: var(--accent); }
   button:disabled { opacity: .45; cursor: default; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 650; }
+  button.primary { background: var(--btn); border-color: var(--btn); color: var(--on-accent); font-weight: 650; }
   button.danger { border-color: var(--bad-line); color: var(--bad); }
   button.small { padding: 2px 8px; font-size: 12px; }
   input, textarea, select { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
@@ -125,7 +130,7 @@
     padding: 6px 10px; color: var(--dim); font-weight: 600; }
   .tab:hover:not(:disabled) { color: var(--text); border-color: transparent; }
   .tab.on { color: var(--text); border-bottom-color: var(--accent); }
-  .tab .count { font-size: 11px; background: var(--accent); color: var(--on-accent); border-radius: 999px; padding: 0 6px; margin-left: 4px; }
+  .tab .count { font-size: 11px; background: var(--btn); color: var(--on-accent); border-radius: 999px; padding: 0 6px; margin-left: 4px; }
   .pane { flex: 1; overflow-y: auto; min-height: 0; }
 
   /* chat */
@@ -188,7 +193,8 @@
   #menubtn { display: none; padding: 2px 9px; }
 
   /* stats (single series = --series-1; status colors always come with a glyph) */
-  :root { --series-1: #3987e5; --good: var(--ok); --warning: var(--warn); --critical: var(--bad); --grid: var(--line-soft); }
+  /* one chart color: a steel blue near the agent's voice (it counts the agent's actions); validated on --panel */
+  :root { --series-1: #5b86c4; --good: var(--ok); --warning: var(--warn); --critical: var(--bad); --grid: var(--line-soft); }
   #stats { padding: 16px 20px 40px; }
   .kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-bottom: 18px; }
   .tile { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; min-width: 0; }
@@ -218,7 +224,7 @@
   .tl svg { display: block; width: 100%; overflow: visible; }
   .tl text { fill: var(--dim); font-size: 10.5px; font-family: var(--mono); }
   .tl .bar { fill: var(--series-1); }
-  .tl .hit:hover + .bar, .tl .bar.hl { fill: #6da7ec; }
+  .tl .hit:hover + .bar, .tl .bar.hl { fill: var(--sky); }
   .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--dim); margin-top: 6px; }
   .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--series-1); vertical-align: -1px; margin-right: 5px; }
   .tip { position: absolute; pointer-events: none; z-index: 10; background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
@@ -315,7 +321,11 @@
     .shimmer { animation: none; background: none; color: var(--dim); }
   }
 
-  /* ================= theme layer: Spruce & lilac ================= */
+  /* ================= theme layer: Evergreen ================= */
+  /* A barely-there lift at the top, like an editor's title bar; nothing more. */
+  body { background: linear-gradient(180deg, #0f1612 0, var(--bg) 220px) fixed; }
+  header, aside, main, .feedhead { background: transparent !important; }
+  header h1, .toolbar h2, .chatdiv, .welcome h2.display, .newtitle, .ihero h2 { font-family: var(--display); font-weight: 700; letter-spacing: -.015em; }
   header { height: 54px; gap: 14px; padding: 0 18px; background: var(--bg); border-bottom: 1px solid var(--line-soft); }
   .brand { display: flex; align-items: center; gap: 10px; }
   .brand svg { flex: none; }
@@ -337,7 +347,7 @@
   button { border-radius: var(--r-sm); background: var(--panel2); border-color: var(--border); padding: 7px 13px; font-weight: 500;
     transition: border-color .15s, background-color .15s, filter .15s; }
   button:hover:not(:disabled) { border-color: var(--accent-line); background: color-mix(in oklab, var(--panel2) 80%, var(--accent) 6%); }
-  button.primary:hover:not(:disabled) { filter: brightness(1.08); border-color: var(--accent); background: var(--accent); }
+  button.primary:hover:not(:disabled) { filter: brightness(1.12); border-color: var(--btn); background: var(--btn); }
   button.danger { border-color: var(--bad-line); color: var(--bad); background: transparent; }
   button.small { border-radius: 6px; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -388,6 +398,11 @@
 
   input[type=checkbox] { accent-color: var(--accent); width: auto; }
   .escalation .row { flex-wrap: wrap; } .escalation button, .toolbar button { white-space: nowrap; }
+  /* the supervisor's decisions carry their meaning: done green, restart / asking
+     you gold, nudges neutral (crimson would make a success look like an alarm) */
+  .badge.act { color: var(--dim); border-color: var(--border); }
+  .badge.d-done { color: var(--ok); border-color: var(--ok-line); }
+  .badge.d-restart, .badge.d-escalate { color: var(--warn); border-color: var(--warn-line); }
   /* the help request: the one gold thing on screen */
   .escalation { background: var(--warn-bg); border-color: var(--warn-line); }
 
@@ -415,7 +430,7 @@
   .steps { list-style: none; padding: 0; margin: 26px 0; counter-reset: step; display: grid; gap: 14px; }
   .steps li { counter-increment: step; display: grid; grid-template-columns: 30px 1fr; gap: 2px 12px; color: var(--dim); max-width: 60ch; }
   .steps li::before { content: counter(step); grid-row: span 2; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
-    font-weight: 700; font-size: 13px; color: var(--on-accent); background: var(--accent); }
+    font-weight: 700; font-size: 13px; color: var(--on-accent); background: var(--btn); }
   .steps b { color: var(--text); font-weight: 650; }
 
   /* new project: conversation left, goal draft right */
@@ -438,8 +453,8 @@
   .q .why { font-size: 12.5px; color: var(--dim); margin-top: 1px; }
   .opts { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 6px; }
   .opt { border-radius: 999px; padding: 4px 12px; font-size: 13px; background: var(--bg); }
-  .opt.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
-  .opt.on:hover:not(:disabled) { background: var(--accent); }
+  .opt.on { background: var(--btn); border-color: var(--btn); color: var(--on-accent); font-weight: 600; }
+  .opt.on:hover:not(:disabled) { background: var(--btn); }
   .q input { font-size: 13px; }
   .qa { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 5px 0; font-size: 13px; }
   .qa .a { color: var(--text); } .qa .a.skip { color: var(--faint); font-style: italic; }
@@ -558,7 +573,8 @@
   @media (max-width: 1000px) { .mgrid { grid-template-columns: 1fr; gap: 2px; } .mgrid dd { margin-bottom: 8px; } }
 
   /* logo states (color isn't motion, so these apply even with reduced motion) */
-  body.help .logo .lg-check { stroke: var(--warn); }
+  body.help .logo .lg-prompt { stroke: var(--warn); }
+  body.help .logo .lg-cursor { fill: var(--warn); }
 
   /* ================= motion =================
      Motion marks something arriving, finishing or needing you. It never loops
@@ -569,13 +585,15 @@
   @media (prefers-reduced-motion: no-preference) {
     .tabs .ink.ready { transition: left .28s cubic-bezier(.3,.7,.2,1), width .28s cubic-bezier(.3,.7,.2,1); }
     /* logo: the check draws in once; blinks like a cursor while a run is going; amber pulse when it needs you */
-    .logo .lg-check { stroke-dasharray: 13; stroke-dashoffset: 0; }
-    .logo.draw .lg-check { animation: lg-draw .7s .2s cubic-bezier(.4,0,.2,1) backwards; }
-    .logo.draw .lg-prompt { animation: lg-prompt .45s cubic-bezier(.3,.7,.2,1) backwards; }
-    body.run .logo .lg-check { animation: lg-cursor 1.2s ease-in-out infinite; }
-    body.help .logo .lg-check { animation: lg-help 1.1s ease-in-out infinite; }
-    @keyframes lg-draw { from { stroke-dashoffset: 13; } }
-    @keyframes lg-prompt { from { opacity: 0; transform: translateX(-3px); } }
+    /* the skull draws itself, then its eyes light up */
+    .logo .lg-skull { stroke-dasharray: 100; stroke-dashoffset: 0; }
+    .logo.draw .lg-skull { animation: lg-draw .9s cubic-bezier(.4,0,.2,1) backwards; }
+    .logo.draw .lg-face { animation: lg-eyes .3s .6s ease-out backwards; }
+    .logo.draw .lg-prompt, .logo.draw .lg-cursor { animation: lg-eyes .35s .8s ease-out backwards; }
+    body.run .logo .lg-cursor { animation: lg-cursor 1.1s steps(2, jump-none) infinite; }
+    body.help .logo .lg-prompt, body.help .logo .lg-cursor { animation: lg-help 1s ease-in-out infinite; }
+    @keyframes lg-draw { from { stroke-dashoffset: 100; } }
+    @keyframes lg-eyes { from { opacity: 0; } }
     @keyframes lg-cursor { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
     @keyframes lg-help { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
     /* arrivals */
@@ -650,11 +668,12 @@
 <header>
   <button id="menubtn" title="Projects">☰</button>
   <span class="brand">
-    <!-- "Checked prompt": a terminal prompt whose cursor is a check. Done means a command passed. -->
+    <!-- "Prompt skull": the eye sockets are a terminal prompt and a cursor block. -->
     <svg class="logo" width="26" height="26" viewBox="0 0 32 32" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <rect class="lg-box" x="2.5" y="2.5" width="27" height="27" rx="7.5" stroke="var(--accent)" stroke-width="2.4"/>
-      <path class="lg-prompt" d="M9 10.5l5.5 5.5L9 21.5" stroke="var(--sky)" stroke-width="2.8"/>
-      <path class="lg-check" d="M16.5 20.5l2.7 2.7 5.6-6.2" stroke="var(--ok)" stroke-width="2.8"/>
+      <path class="lg-skull" pathLength="100" d="M16 2.8c-7.6 0-11.8 5.3-11.8 11.4 0 4 2 6.6 4.6 8v4.2c0 1.5 1 2.6 2.6 2.6h9.2c1.6 0 2.6-1.1 2.6-2.6v-4.2c2.6-1.4 4.6-4 4.6-8C27.8 8.1 23.6 2.8 16 2.8z" stroke="var(--text)" stroke-width="2.2"/>
+      <path class="lg-prompt" d="M8.6 12.2l3.6 3-3.6 3" stroke="var(--accent)" stroke-width="2.4"/>
+      <rect class="lg-cursor" x="17.8" y="12.4" width="5.2" height="5.6" rx="1.2" fill="var(--accent)"/>
+      <path class="lg-face" d="M16 19.6l-1.4 2.4h2.8zM13.2 25.4v3.2M16 25.4v3.2M18.8 25.4v3.2" stroke="var(--text)" stroke-width="1.6" fill="var(--text)"/>
     </svg>
     <h1>OpenHands Supervisor</h1>
   </span>
@@ -988,12 +1007,11 @@ function renderLogoState() {
   if (S.faviconState === state) return;
   S.faviconState = state;
   const css = getComputedStyle(document.documentElement), c = (v) => css.getPropertyValue(v).trim();
-  const check = help ? c("--warn") : c("--ok");
+  const eyes = help ? c("--warn") : c("--accent");
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='none' stroke-linecap='round' stroke-linejoin='round'>` +
-    `<rect x='2.5' y='2.5' width='27' height='27' rx='7.5' stroke='${c("--accent")}' stroke-width='2.6'/>` +
-    `<path d='M9 10.5l5.5 5.5L9 21.5' stroke='${c("--sky")}' stroke-width='3'/>` +
-    `<path d='M16.5 20.5l2.7 2.7 5.6-6.2' stroke='${check}' stroke-width='3'/>` +
-    (help || run ? `<circle cx='26' cy='6' r='5' fill='${help ? c("--warn") : c("--ok")}' stroke='${c("--bg")}' stroke-width='2'/>` : "") + `</svg>`;
+    `<path d='M16 2.8c-7.6 0-11.8 5.3-11.8 11.4 0 4 2 6.6 4.6 8v4.2c0 1.5 1 2.6 2.6 2.6h9.2c1.6 0 2.6-1.1 2.6-2.6v-4.2c2.6-1.4 4.6-4 4.6-8C27.8 8.1 23.6 2.8 16 2.8z' fill='${c("--bg")}' stroke='${c("--text")}' stroke-width='2.4'/>` +
+    `<path d='M8.6 12.2l3.6 3-3.6 3' stroke='${eyes}' stroke-width='2.6'/><rect x='17.8' y='12.4' width='5.2' height='5.6' rx='1.2' fill='${eyes}'/>` +
+    (run ? `<circle cx='26.5' cy='5.5' r='4.6' fill='${c("--ok")}' stroke='${c("--bg")}' stroke-width='2'/>` : "") + `</svg>`;
   $("#favicon").href = "data:image/svg+xml," + encodeURIComponent(svg);
 }
 // Redraw the logo's check (page load, project finished).
@@ -1573,7 +1591,7 @@ function addChat(r, isLive) {
       node = el("div", { class: "msg check " + (r.passed ? "ok" : "bad") },
         el("div", { class: "who" }, r.passed ? "✓ check passed" : `✗ check failed (exit ${r.exit_code})`, took(r.seconds ?? null)),
         el("div", { class: "summary mono", style: "padding:2px 10px", text: r.command }),
-        el("div", { class: "body" }, el("span", { class: "badge act", text: (r.decision || "").toUpperCase() }), r.reason || ""),
+        el("div", { class: "body" }, el("span", { class: `badge act d-${r.decision || "none"}`, text: (r.decision || "").toUpperCase() }), r.reason || ""),
         (r.changed || []).length ? el("div", { class: "body" }, "files changed: ", ...r.changed.map(fileChip)) : null,
         out);
       break;
@@ -2416,7 +2434,7 @@ function addFeed(r, isLive) {
         el("span", { class: "badge", text: `turn: ${r.end}` }),
         el("span", { class: "badge", text: `${r.actions} actions · ${(r.changed || []).length} files` }),
         el("span", { class: "badge " + (ok ? "ok" : "bad"), text: ok ? "check passed" : `check failed (${r.check_exit})` }),
-        el("span", { class: "badge act", text: (r.decision || "").toUpperCase() }), r.reason || "");
+        el("span", { class: `badge act d-${r.decision || "none"}`, text: (r.decision || "").toUpperCase() }), r.reason || "");
       if ((r.changed || []).length) node.append(el("div", { style: "margin-top:3px" }, ...r.changed.map(fileChip)));
       if (r.check_output) node.append(el("details", { style: "padding:0" }, el("summary", { text: "check output" }), el("pre", { class: "mono", text: r.check_output })));
       break;

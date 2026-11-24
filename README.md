@@ -119,8 +119,9 @@ Then open **http://<that-machine>:8765** in a browser.
   GPU), capabilities, sampling, and its context window, with a warning if
   Ollama's context is smaller than what the supervisor sends (prompts would be
   cut) or larger than the model was trained for.
-- The logo (a terminal prompt whose cursor is a check) blinks like a cursor
-  while a run is going and turns amber when the agent needs you; the browser
+- The logo (a skull whose eyes are a terminal prompt and a cursor) draws
+  itself in on load; its cursor eye blinks while a run is going and both
+  eyes turn amber when the agent needs you; the browser
   tab's icon changes color the same way. Motion is kept to moments that mean
   something (a milestone completing, the help card arriving, a project
   finishing) and
