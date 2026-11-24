@@ -11,7 +11,9 @@ WORKDIR /app
 #    is reused on every rebuild until pyproject.toml changes. The pip cache
 #    lives outside the image (BuildKit cache mount), so even then only new or
 #    changed packages are downloaded, and the image stays small.
-COPY pyproject.toml README.md ./
+# Only pyproject.toml: copying anything else here (README.md was) makes every
+# edit to it reinstall all dependencies.
+COPY pyproject.toml ./
 RUN --mount=type=cache,target=/root/.cache/pip \
     mkdir supervisor && touch supervisor/__init__.py \
     && pip install . \
