@@ -420,6 +420,7 @@ class Supervisor:
         baseline = testguard.scan(self.project_dir)
         notes_at_start = self._read_notes()
         notes_reminded = env_reminded = False
+        seen: set = set()  # (action, result) pairs this milestone, across conversations
 
         while True:  # one iteration per conversation
             self.log.chat(
@@ -432,6 +433,7 @@ class Supervisor:
                 milestone=n,
             )
             collector = TurnCollector(on_activity=self._activity)
+            collector.seen = seen
             conversation = Conversation(
                 agent=agent,
                 workspace=sandbox.workspace,
@@ -471,6 +473,8 @@ class Supervisor:
                                       milestone=n)
                     agent_seconds = time.monotonic() - started
                     tokens = _token_usage(conversation)
+                    report.tokens = max(0, tokens["prompt"] + tokens["completion"]
+                                        - tokens_before["prompt"] - tokens_before["completion"])
                     check_started = time.monotonic()
                     check = self._check(sandbox, milestone.check, baseline)
                     check_seconds = time.monotonic() - check_started
@@ -518,6 +522,10 @@ class Supervisor:
                         error=report.error,
                         duration=round(agent_seconds, 1),
                         check_seconds=round(check_seconds, 1),
+                        repeated=report.repeated_actions,
+                        repeats=report.repeat_examples[:6],
+                        no_progress_turns=state.no_progress_turns,
+                        tokens_since_progress=state.tokens_since_progress,
                         prompt_tokens=max(0, tokens["prompt"] - tokens_before["prompt"]),
                         completion_tokens=max(0, tokens["completion"] - tokens_before["completion"]),
                         context_tokens=tokens["context"],
@@ -609,6 +617,7 @@ class Supervisor:
         state.restarts = 0  # fresh budget after human guidance
         state.questions = 0
         state.new_conversation()
+        state.human_stepped_in()
         milestone.restarts = 0
         self.contract.save(self.project_dir)
         self.log.event("guidance", title=milestone.title, note=text)

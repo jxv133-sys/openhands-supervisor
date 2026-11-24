@@ -78,6 +78,13 @@ SCHEMA: list[dict] = [
          help="How often the agent may ask questions (answered 'decide yourself') before it's escalated to you."),
     dict(key="limits.stagnant_turns", group="Limits", label="Same failure, turns", type="int", min=1, max=50,
          help="The identical check failure this many turns in a row restarts the milestone."),
+    dict(key="limits.repeat_actions", group="Limits", label="Repeated actions before warning", type="int", min=1, max=100,
+         help="Actions in one turn that repeat earlier ones with the same result. First time: the agent is told to "
+              "take stock; again: you're asked for help."),
+    dict(key="limits.stall_turns", group="Limits", label="Turns without progress", type="int", min=1, max=100,
+         help="Turns in a row with no file changed and the same check result (across restarts) before you're asked."),
+    dict(key="limits.stall_tokens", group="Limits", label="Tokens without progress", type="int", min=0, max=100_000_000,
+         help="Model tokens spent without progress before you're asked. 0 = no limit."),
     dict(key="limits.check_output_chars", group="Limits", label="Check output shown to agent", type="int", min=200, max=50_000,
          help="Characters of failing check output sent back to the agent."),
 ]

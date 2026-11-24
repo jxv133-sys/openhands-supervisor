@@ -8,7 +8,7 @@ with plain text, hits the per-turn action cap, gets flagged as looping, or error
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 
@@ -28,6 +28,11 @@ class TurnReport:
     actions: int = 0  # tool calls this turn
     changed_files: int = 0  # project files changed this turn (measured on disk)
     error: str = ""
+    # Actions this turn that repeated an earlier action of this milestone AND
+    # got the same result: they added no information. Examples for messages.
+    repeated_actions: int = 0
+    repeat_examples: list = field(default_factory=list)
+    tokens: int = 0  # model tokens this turn (prompt + reply), 0 if unknown
 
 
 @dataclass
@@ -64,6 +69,10 @@ class Limits:
     max_questions_per_milestone: int = 4
     stagnant_turns: int = 3  # same failing check output this many turns in a row
     check_output_chars: int = 2500  # how much check output to show the agent
+    # Stagnation: the agent keeps working but learns nothing new.
+    repeat_actions: int = 4  # actions in one turn that repeat earlier ones with the same result
+    stall_turns: int = 4  # turns in a row without progress (no file change, same check result)
+    stall_tokens: int = 400_000  # model tokens spent without progress (0 = no limit)
 
 
 @dataclass
@@ -78,6 +87,17 @@ class MilestoneState:
     questions: int = 0
     last_failure_sig: str = ""
     same_failure_turns: int = 0
+    # Stagnation, kept across fresh conversations: a restart re-explores, it
+    # doesn't make progress. Reset only when the human steps in.
+    no_progress_turns: int = 0
+    tokens_since_progress: int = 0
+    progress_sig: str = ""  # check result last time something moved
+    stagnation_warned: bool = False
+
+    def human_stepped_in(self) -> None:
+        self.no_progress_turns = 0
+        self.tokens_since_progress = 0
+        self.stagnation_warned = False
 
     def new_conversation(self) -> None:
         self.turns = 0
@@ -96,6 +116,14 @@ _QUESTION_RE = re.compile(
     r"please confirm|can you confirm|proceed\?|which (option|approach)|before i (start|continue))\b",
     re.IGNORECASE | re.MULTILINE,
 )
+
+
+# The agent's way to ask the human (taught in the milestone prompt).
+_HELP_RE = re.compile(r"^\s*STUCK\s*:|\b(i need (your |human )?help|i('| a)m (truly |completely )?stuck)\b", re.IGNORECASE)
+
+
+def asks_for_help(text: str) -> bool:
+    return bool(text and _HELP_RE.search(text))
 
 
 def looks_like_question(text: str) -> bool:
@@ -166,6 +194,22 @@ def decide(
         )
     state.consecutive_errors = 0
 
+    # 2b. The agent says it's stuck: ask the human now, don't make it keep going.
+    if report.end in (TurnEnd.MESSAGE, TurnEnd.FINISHED) and asks_for_help(report.agent_text):
+        return Decision(Action.ESCALATE, "the agent asked for help", report.agent_text)
+
+    # 2c. Stagnation: busy, but nothing new. Measured across restarts.
+    stalled = _track_progress(report, check, state, limits)
+    if report.repeated_actions >= limits.repeat_actions:
+        if not state.stagnation_warned:
+            state.stagnation_warned = True
+            return Decision(Action.NUDGE, f"agent repeated {report.repeated_actions} earlier actions with the same results",
+                            _repeat_message(report, check_cmd, check, limits))
+        return Decision(Action.ESCALATE, "the agent keeps repeating actions that give no new information",
+                        _stagnation_summary(report, state))
+    if stalled:
+        return Decision(Action.ESCALATE, stalled, _stagnation_summary(report, state))
+
     # 3. Looping: a fresh conversation is the cure.
     if report.end == TurnEnd.STUCK:
         return _restart(state, limits, "agent was repeating itself (stuck detector)")
@@ -232,6 +276,48 @@ def decide(
         "turn action cap reached, progress made",
         f"Good progress. Keep going. {feedback}",
     )
+
+
+def _track_progress(report: TurnReport, check: CheckResult, state: MilestoneState, limits: Limits) -> str:
+    """Update the no-progress counters; return why to escalate, or ""."""
+    sig = "pass" if check.passed else failure_signature(check.output)
+    if report.changed_files > 0 or sig != state.progress_sig:
+        state.progress_sig = sig
+        state.no_progress_turns = 0
+        state.tokens_since_progress = 0
+        return ""
+    state.no_progress_turns += 1
+    state.tokens_since_progress += report.tokens
+    if state.no_progress_turns >= limits.stall_turns:
+        return f"no progress for {state.no_progress_turns} turns (no file changed, same check result)"
+    if limits.stall_tokens and state.tokens_since_progress >= limits.stall_tokens:
+        return f"{state.tokens_since_progress:,} tokens spent without progress"
+    return ""
+
+
+def _repeat_message(report: TurnReport, check_cmd: str, check: CheckResult, limits: Limits) -> str:
+    listed = "\n".join(f"- {e}" for e in report.repeat_examples[:6])
+    state_of_check = "passes" if check.passed else f"fails (exit {check.exit_code})"
+    return (
+        "Stop and take stock. You repeated actions you had already run, and they returned the same results, "
+        f"so they told you nothing new:\n{listed}\n"
+        f"The check `{check_cmd}` currently {state_of_check}. Before doing anything else, write down in one short "
+        "list: what you know for certain, which explanations your evidence has ruled out, and the ONE next "
+        "experiment that would tell the remaining explanations apart. Then run only that. Do not re-run commands "
+        "whose results you already have unless you changed something.\n"
+        "If you cannot find a new experiment, reply starting with `STUCK:` followed by what you tried, what you "
+        "found, and what you need; the user will help."
+    )
+
+
+def _stagnation_summary(report: TurnReport, state: MilestoneState) -> str:
+    parts = [f"No progress for {state.no_progress_turns} turn(s)"
+             + (f", {state.tokens_since_progress:,} tokens" if state.tokens_since_progress else "") + "."]
+    if report.repeat_examples:
+        parts.append("It kept repeating:\n" + "\n".join(f"- {e}" for e in report.repeat_examples[:6]))
+    if report.agent_text:
+        parts.append("Its latest reasoning:\n" + report.agent_text[-1500:])
+    return "\n\n".join(parts)
 
 
 def _restart(state: MilestoneState, limits: Limits, reason: str) -> Decision:

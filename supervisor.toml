@@ -48,4 +48,7 @@ max_restarts_per_milestone = 3   # then it asks you
 max_consecutive_errors = 3
 max_questions_per_milestone = 4
 stagnant_turns = 3               # same check failure this many turns -> restart
+repeat_actions = 4               # actions repeating earlier ones with same result -> warn, then ask you
+stall_turns = 4                  # turns with no file change and same check result -> ask you
+stall_tokens = 400000            # tokens spent without progress -> ask you (0 = no limit)
 check_output_chars = 2500

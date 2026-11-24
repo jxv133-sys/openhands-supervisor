@@ -15,6 +15,9 @@ The supervisor does what you were doing by hand:
 | loops, or repeats the same failure 3 turns in a row | throws away the conversation and restarts the milestone fresh, with a handoff note |
 | burns a whole turn without changing any file | restarts the milestone |
 | makes a check "pass" by running no tests, or by skipping or deleting tests (Rust/Python) | doesn't accept it: "ran 0 tests" or "skipped/removed tests" counts as a failure, with the reason sent back |
+| re-runs commands it already ran and gets the same results | tells it once to stop, list what it has ruled out and run one new decisive experiment; if it keeps going, asks you |
+| makes no progress for 4 turns (no file changed, same check result), even across restarts, or spends 400K tokens that way | asks you, with what it kept repeating and its latest reasoning |
+| replies `STUCK: ...` (it's told to when it runs out of ideas) | asks you right away |
 | still can't do it after 3 restarts | asks you for guidance (type a hint, skip, or quit) |
 
 When the last milestone is done, a **final review** checks the project as a
