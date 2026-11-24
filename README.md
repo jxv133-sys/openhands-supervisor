@@ -61,6 +61,13 @@ Then open **http://<that-machine>:8765** in a browser.
 
 ### Web interface
 
+- **Ideas chat** (button under *New project*): brainstorm with your model
+  before anything becomes a project. It can look at your existing projects
+  (goals, plans, files) and read public web pages such as docs (never
+  addresses on your LAN; turn web access off with `chat_web = false`). When
+  you settle on something it shows a *Start this project* button that opens
+  New project with the idea filled in. Chats are saved in `projects/.ideas/`.
+  It runs no code. It shares the GPU with any running project.
 - **New project**: describe what you want, roughly, and press *Shape it with
   the assistant*. It drafts a goal and asks a few clarifying questions
   (language, commands, where data lives, error behaviour...) with suggested

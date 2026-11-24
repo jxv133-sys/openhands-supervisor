@@ -17,6 +17,10 @@ stream = true
 # counts as failed. The final review also runs the full cargo test / pytest
 # suite, Python in a clean virtualenv with only the declared dependencies.
 test_guard = true
+# Ideas chat (brainstorming, separate from projects): may it read public web
+# pages? And chat_think = false makes thinking models answer faster there.
+chat_web = true
+# chat_think = false
 # Watch the streamed reply and cut it off if the model starts repeating itself
 # mid-generation (a "thinking loop"); the milestone then restarts fresh.
 loop_guard = true

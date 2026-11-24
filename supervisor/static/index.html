@@ -463,6 +463,56 @@
   button.dangerfill { background: var(--bad); border-color: var(--bad); color: #2a0d09; font-weight: 650; }
   button.dangerfill:hover:not(:disabled) { background: var(--bad); filter: brightness(1.08); border-color: var(--bad); }
 
+  /* ideas chat: quiet, one column of conversation */
+  aside button.ideasbtn { width: 100%; margin: -4px 0 14px; background: transparent; border-color: var(--accent-line); color: var(--accent); font-weight: 600; }
+  aside button.ideasbtn.on { background: var(--accent-bg); }
+  .ideas { display: grid; grid-template-columns: 220px minmax(0, 1fr); height: 100%; min-height: 0; }
+  .ideas-list { border-right: 1px solid var(--line-soft); padding: 14px 10px; overflow-y: auto; }
+  .ideas-list #ic-new { width: 100%; margin-bottom: 10px; }
+  .ic { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 4px; padding: 7px 8px; border-radius: var(--r-sm); cursor: pointer; font-size: 13px; color: var(--dim); }
+  .ic:hover { background: var(--panel); color: var(--text); }
+  .ic.on { background: var(--panel2); color: var(--text); }
+  .ic .tt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ic .x { visibility: hidden; padding: 0 6px; border: none; background: none; color: var(--faint); font-size: 12px; }
+  .ic:hover .x { visibility: visible; } .ic .x:hover:not(:disabled) { color: var(--bad); background: none; }
+  .ideas-main { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
+  .ideas-scroll { overflow-y: auto; }
+  .ideas-thread { max-width: 760px; margin: 0 auto; padding: 28px 24px 12px; }
+  .ideas-compose { padding: 10px 24px 16px; }
+  .composebox { max-width: 760px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; background: var(--panel);
+    border: 1px solid var(--border); border-radius: var(--r-lg); padding: 8px 8px 8px 14px; }
+  .composebox:focus-within { border-color: var(--accent-line); }
+  .composebox textarea { border: none; background: none; padding: 6px 0; resize: none; max-height: 220px; box-shadow: none !important; }
+  .composehint { max-width: 760px; margin: 6px auto 0; font-size: 11.5px; padding-left: 4px; }
+  .ihero { margin: 8vh 0 24px; }
+  .ihero h2 { font-size: 34px; font-weight: 800; letter-spacing: -.025em; margin: 0 0 8px; }
+  .starters { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+  .starters button { text-align: left; padding: 10px 12px; border-radius: var(--r-md); background: var(--panel); border-color: var(--line-soft); font-weight: 400; line-height: 1.4; }
+  .iu { margin: 18px 0 18px 15%; padding: 10px 14px; border-radius: var(--r-lg); background: var(--panel2); white-space: pre-wrap; word-break: break-word; }
+  .ia { margin: 6px 0 18px; line-height: 1.6; }
+  .ia p { margin: 0 0 10px; } .ia ul, .ia ol { margin: 0 0 10px; padding-left: 22px; } .ia li { margin: 3px 0; }
+  .ia h4 { margin: 14px 0 6px; font-size: 14.5px; }
+  .ia code { font-family: var(--mono); font-size: 12.5px; background: var(--panel2); padding: 1px 5px; border-radius: 4px; }
+  .ia pre { max-height: none; margin: 8px 0 12px; } .ia pre code { background: none; padding: 0; }
+  .ia a { color: var(--accent); }
+  .ia.streaming > :last-child::after { content: "▍"; color: var(--accent); animation: blink 1s steps(2) infinite; margin-left: 1px; }
+  .ithink { color: var(--dim); font-size: 12.5px; margin: 4px 0 6px; padding: 0; }
+  .ithink summary { list-style: none; display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+  .ithink summary::-webkit-details-marker { display: none; }
+  .ithink .tx { white-space: pre-wrap; border-left: 2px solid var(--border); padding: 4px 0 4px 10px; margin: 6px 0 0; max-height: 18em; overflow: auto; }
+  .itool { display: flex; gap: 8px; align-items: center; font-size: 12.5px; color: var(--dim); margin: 4px 0; flex-wrap: wrap; }
+  .itool .ok { color: var(--ok); font-weight: 700; }
+  .itool details { flex-basis: 100%; padding: 0 0 0 22px; } .itool details pre { max-height: 220px; font-size: 12px; }
+  .inotice { font-size: 12.5px; color: var(--dim); font-style: italic; margin: 6px 0; } .inotice.err { color: var(--bad); font-style: normal; }
+  .propose { margin: 10px 0 14px; padding: 14px 16px; border-radius: var(--r-lg); border: 1px solid var(--accent-line); background: var(--accent-bg); }
+  .propose b { font-size: 15px; } .propose p { margin: 6px 0 10px; color: var(--text); }
+  @media (max-width: 1000px) {
+    .ideas { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+    .ideas-list { border-right: none; border-bottom: 1px solid var(--line-soft); display: flex; gap: 6px; overflow-x: auto; padding: 8px; }
+    .ideas-list #ic-new { width: auto; margin: 0; flex: none; } #ic-chats { display: flex; gap: 6px; } .ic { white-space: nowrap; max-width: 200px; }
+    .iu { margin-left: 8%; } .ideas-thread { padding: 18px 14px 8px; } .ideas-compose { padding: 8px 10px 12px; }
+  }
+
   /* drafting a milestone */
   .composer { border-style: dashed; border-color: var(--accent-line); background: transparent; }
   .composer textarea { min-height: 60px; }
@@ -507,6 +557,7 @@
 <div class="layout">
   <aside>
     <button class="new primary" id="newbtn">+ New project</button>
+    <button class="new ideasbtn" id="ideasbtn">Ideas chat</button>
     <div id="projects"></div>
   </aside>
   <main id="main"></main>
@@ -538,6 +589,26 @@
     </ol>
     <p>Start with <b>+ New project</b>, or open one from the project list.</p>
   </div></div>
+</template>
+
+<template id="tpl-ideas">
+  <div class="ideas">
+    <div class="ideas-list">
+      <button class="small" id="ic-new">+ New chat</button>
+      <div id="ic-chats"></div>
+    </div>
+    <div class="ideas-main">
+      <div class="ideas-scroll" id="ic-scroll"><div class="ideas-thread" id="ic-thread"></div></div>
+      <div class="ideas-compose">
+        <div class="composebox">
+          <textarea id="ic-text" rows="1" placeholder="Ask for ideas, or describe what you're curious about"></textarea>
+          <button class="primary" id="ic-send">Send</button>
+          <button class="danger hidden" id="ic-stop">Stop</button>
+        </div>
+        <div class="dim composehint"><span id="ic-model"></span> · Enter to send, Shift+Enter for a new line</div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <template id="tpl-new">
@@ -746,6 +817,7 @@ const jobHere = () => jobActive() && job().project === S.current;
 
 // ---------- sidebar & chips ----------
 function renderSidebar() {
+  $("#ideasbtn").classList.toggle("on", S.view === "ideas");
   const box = $("#projects"); box.replaceChildren();
   const projects = [...S.state.projects].sort((a, b) => (b.mtime || 0) - (a.mtime || 0));
   if (!projects.length && !S.state.planning.length) box.append(el("div", { class: "dim", text: "No projects yet." }));
@@ -795,6 +867,203 @@ function renderTitle() {
 function show(tplId) { $("#main").replaceChildren($(tplId).content.cloneNode(true)); }
 
 function openWelcome() { S.view = "welcome"; S.current = null; show("#tpl-welcome"); renderSidebar(); }
+
+// ---------- ideas chat ----------
+// A plain chat with the model for brainstorming. Replies stream as NDJSON from
+// POST /api/ideas/<id>/message; chats are stored on the server.
+const STARTERS = [
+  "Give me 5 small Rust CLI tools I could build in an afternoon each",
+  "What could I build on top of my existing projects?",
+  "A Python script that automates something boring on my PC",
+  "Project ideas that would teach me async Rust",
+];
+async function openIdeas(id) {
+  if (!confirmLeave()) return;
+  S.view = "ideas"; S.current = null; show("#tpl-ideas"); renderSidebar();
+  document.body.classList.remove("menu-open");
+  S.ideas = S.ideas || { chats: [], chat: null, abort: null };
+  $("#ic-new").onclick = () => { if (!S.ideas.abort) { S.ideas.chat = null; renderIdeas(); $("#ic-text").focus(); } };
+  $("#ic-send").onclick = () => sendIdea();
+  $("#ic-stop").onclick = () => S.ideas.abort && S.ideas.abort.abort();
+  const ta = $("#ic-text");
+  ta.oninput = () => { ta.style.height = "auto"; ta.style.height = `${Math.min(ta.scrollHeight, 220)}px`; };
+  ta.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendIdea(); } };
+  try {
+    const data = await api("GET", "/api/ideas");
+    S.ideas.chats = data.chats; $("#ic-model").textContent = `Chatting with ${data.model}`;
+    if (id) S.ideas.chat = await api("GET", `/api/ideas/${id}`);
+    else if (S.ideas.chat && !S.ideas.chats.some(c => c.id === S.ideas.chat.id)) S.ideas.chat = null;
+  } catch (e) { toast(e.message); }
+  renderIdeas(); ta.focus();
+}
+function renderIdeaList() {
+  const box = $("#ic-chats"); if (!box) return;
+  const cur = S.ideas.chat && S.ideas.chat.id;
+  box.replaceChildren(...S.ideas.chats.map(c => el("div", { class: "ic" + (c.id === cur ? " on" : ""), title: c.title,
+    onclick: async () => { if (S.ideas.abort) return; try { S.ideas.chat = await api("GET", `/api/ideas/${c.id}`); renderIdeas(); } catch (e) { toast(e.message); } } },
+    el("span", { class: "tt", text: c.title || "Untitled" }),
+    el("button", { class: "x", title: "Delete this chat", text: "✕", onclick: async (e) => {
+      e.stopPropagation(); if (!confirm(`Delete the chat "${c.title || "Untitled"}"?`)) return;
+      try { await api("DELETE", `/api/ideas/${c.id}`); S.ideas.chats = S.ideas.chats.filter(x => x.id !== c.id);
+        if (cur === c.id) S.ideas.chat = null; renderIdeas(); } catch (err) { toast(err.message); } } }))));
+}
+function renderIdeas() {
+  renderIdeaList();
+  const thread = $("#ic-thread"); if (!thread) return;
+  thread.replaceChildren();
+  const chat = S.ideas.chat;
+  if (!chat || !chat.messages.length) {
+    thread.append(el("div", { class: "ihero" }, el("h2", { text: "What should we build?" }),
+      el("p", { class: "dim", style: "margin:0 0 22px;max-width:56ch", text: "Brainstorm with your model. It can look at your projects and read docs on the web, and when you settle on something it turns it into a project in one click." }),
+      el("div", { class: "starters" }, ...STARTERS.map(t => el("button", { text: t, onclick: () => { $("#ic-text").value = t; sendIdea(); } })))));
+    return;
+  }
+  let lastTools = [];
+  for (const m of chat.messages) {
+    if (m.role === "user") thread.append(el("div", { class: "iu", text: m.content }));
+    else if (m.role === "assistant") {
+      if (m.thinking) thread.append(thinkingNode(m.thinking, m.seconds));
+      if (m.content) thread.append(el("div", { class: "ia" }, ...md(m.content)));
+      if (m.stopped) thread.append(el("div", { class: "inotice", text: "Stopped." }));
+      lastTools = [];
+      for (const c of m.tool_calls || []) {
+        const f = c.function || {}; const row = toolNode(f.name, toolLabel(f.name, f.arguments || {}), true);
+        thread.append(row); lastTools.push(row);
+        if (f.name === "propose_project") thread.append(proposeNode(f.arguments || {}));
+      }
+    } else if (m.role === "tool") {
+      const row = lastTools.shift(); if (row) attachResult(row, m.content);
+    }
+  }
+  scrollIdeas(true);
+}
+function toolLabel(name, a) {
+  return ({ list_projects: "looked at your projects", read_project: `read project ${a.name || ""}`, list_files: `listed files of ${a.project || ""}`,
+    read_file: `read ${a.project || ""}/${a.path || ""}`, fetch_url: `fetched ${a.url || ""}`, propose_project: `proposed ${a.name || "a project"}` })[name] || name;
+}
+function toolNode(name, label, done) {
+  const kind = name === "fetch_url" ? "scan" : name === "read_file" || name === "read_project" ? "doc" : "gear";
+  const icon = el("span", { style: "display:inline-flex" }, done ? el("span", { class: "ok", text: "✓" }) : anim(kind));
+  return el("div", { class: "itool", "data-tool": name }, icon, el("span", { class: done ? "" : "shimmer", text: label }));
+}
+function attachResult(row, text) {
+  row.firstChild.replaceChildren(el("span", { class: "ok", text: "✓" }));
+  row.querySelector(".shimmer")?.classList.remove("shimmer");
+  if (row.dataset.tool === "propose_project") return;  // the card below says it all
+  row.append(el("details", {}, el("summary", { text: "result" }), el("pre", { class: "mono", text: text || "(empty)" })));
+}
+function thinkingNode(text, seconds, live) {
+  const d = el("details", { class: "ithink" });
+  const head = el("summary", {}, live ? anim("think") : null, el("span", { class: live ? "shimmer" : "", text: live ? "Thinking..." : `Thought${seconds ? ` for ${Math.round(seconds)}s` : ""}` }));
+  const tx = el("div", { class: "tx", text });
+  d.append(head, tx); if (live && $("#f-thinking")?.checked) d.open = true;
+  return d;
+}
+function proposeNode(a) {
+  return el("div", { class: "propose" }, el("b", { text: a.name || "New project" }), el("p", {}, ...inline(a.idea || "")),
+    el("button", { class: "primary", text: "Start this project", onclick: () => startFromIdea(a) }));
+}
+// Hand the idea to New project: its goal assistant takes it from there.
+function startFromIdea(a) {
+  localStorage.setItem(GA_KEY, JSON.stringify({ idea: a.idea || "", name: (a.name || "").toLowerCase().replace(/[^a-z0-9._-]+/g, "-"),
+    answers: [], rounds: [], goal: "", ready: false, started: false }));
+  openNew();
+  toast("Idea copied into New project. Press Shape it with the assistant.", "ok");
+}
+function scrollIdeas(force) {
+  const sc = $("#ic-scroll"); if (!sc) return;
+  const near = sc.scrollHeight - sc.scrollTop - sc.clientHeight < 160;
+  if (force || near) sc.scrollTop = sc.scrollHeight;
+}
+// Tiny Markdown: fenced code, headings, lists, paragraphs; inline code, bold, links. Built as DOM, never innerHTML.
+function md(src) {
+  const out = []; const parts = String(src).split(/^```[^\n]*\n?/m);
+  parts.forEach((part, i) => {
+    if (i % 2) { out.push(el("pre", {}, el("code", { text: part.replace(/\n$/, "") }))); return; }
+    for (const block of part.split(/\n\s*\n/)) {
+      const lines = block.split("\n").filter(l => l.trim());
+      if (!lines.length) continue;
+      if (lines.every(l => /^\s*[-*•]\s+/.test(l))) out.push(el("ul", {}, ...lines.map(l => el("li", {}, ...inline(l.replace(/^\s*[-*•]\s+/, ""))))));
+      else if (lines.every(l => /^\s*\d+[.)]\s+/.test(l))) out.push(el("ol", {}, ...lines.map(l => el("li", {}, ...inline(l.replace(/^\s*\d+[.)]\s+/, ""))))));
+      else if (lines.length === 1 && /^#{1,6}\s/.test(lines[0])) out.push(el("h4", {}, ...inline(lines[0].replace(/^#+\s*/, ""))));
+      else { const p = el("p"); lines.forEach((l, k) => { if (k) p.append(el("br")); p.append(...inline(l.replace(/^#{1,6}\s/, ""))); }); out.push(p); }
+    }
+  });
+  return out;
+}
+function inline(text) {
+  const nodes = []; const rx = /(`[^`]+`)|(\*\*[^*]+\*\*)|\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g; let last = 0, m;
+  while ((m = rx.exec(text))) {
+    if (m.index > last) nodes.push(text.slice(last, m.index));
+    if (m[1]) nodes.push(el("code", { text: m[1].slice(1, -1) }));
+    else if (m[2]) nodes.push(el("b", { text: m[2].slice(2, -2) }));
+    else nodes.push(el("a", { href: m[4], target: "_blank", rel: "noopener noreferrer", text: m[3] }));
+    last = rx.lastIndex;
+  }
+  if (last < text.length) nodes.push(text.slice(last));
+  return nodes;
+}
+async function sendIdea() {
+  const ta = $("#ic-text"); const text = ta.value.trim();
+  if (!text || S.ideas.abort) return;
+  const chatId = S.ideas.chat ? S.ideas.chat.id : "new";
+  if (!S.ideas.chat) S.ideas.chat = { id: null, title: text.slice(0, 70), messages: [] };
+  S.ideas.chat.messages.push({ role: "user", content: text });
+  ta.value = ""; ta.style.height = "auto"; renderIdeas();
+  const thread = $("#ic-thread"), abort = new AbortController(); S.ideas.abort = abort;
+  $("#ic-send").classList.add("hidden"); $("#ic-stop").classList.remove("hidden");
+  // The reply being written: a thinking line, then the answer, then any tool rows.
+  let cur = null, think = null, waiting = toolNode("", "Thinking...", false); waiting.firstChild.replaceChildren(anim("think")); thread.append(waiting);
+  const rerender = () => { if (cur) cur.node.replaceChildren(...md(cur.text)); scrollIdeas(false); };
+  let pending = false; const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(() => { pending = false; rerender(); }); } };
+  const toolRows = [];
+  const handle = (ev) => {
+    if (waiting && ev.type !== "chat") { waiting.remove(); waiting = null; }
+    if (ev.type === "chat" && !S.ideas.chat.id) S.ideas.chat.id = ev.id;
+    else if (ev.type === "thinking") {
+      if (!think) { think = thinkingNode("", 0, true); thread.append(think); think.started = Date.now(); }
+      think.querySelector(".tx").textContent += ev.text; scrollIdeas(false);
+    } else if (ev.type === "text") {
+      if (think) { think.querySelector("summary").replaceChildren(el("span", { text: `Thought for ${Math.round((Date.now() - think.started) / 1000)}s` })); think = null; }
+      if (!cur) { cur = { text: "", node: el("div", { class: "ia streaming" }) }; thread.append(cur.node); }
+      cur.text += ev.text; schedule();
+    } else if (ev.type === "tool") {
+      if (cur) { cur.node.classList.remove("streaming"); cur = null; } think = null;
+      const row = toolNode(ev.name, toolLabel(ev.name, ev.args || {}), false); thread.append(row); toolRows.push(row); scrollIdeas(false);
+      waiting = toolNode("", "Thinking...", false); waiting.firstChild.replaceChildren(anim("think"));
+    } else if (ev.type === "tool_result") {
+      const row = toolRows.shift(); if (row) attachResult(row, ev.text);
+      if (waiting) thread.append(waiting);
+    } else if (ev.type === "propose") { thread.append(proposeNode(ev)); scrollIdeas(false); }
+    else if (ev.type === "notice" || ev.type === "error") thread.append(el("div", { class: "inotice" + (ev.type === "error" ? " err" : ""), text: ev.text }));
+    else if (ev.type === "done" && ev.title) S.ideas.chat.title = ev.title;
+  };
+  try {
+    const headers = { "Content-Type": "application/json" }; const token = localStorage.getItem("supervisorToken"); if (token) headers["X-Token"] = token;
+    const res = await fetch(`/api/ideas/${chatId}/message`, { method: "POST", headers, body: JSON.stringify({ text }), signal: abort.signal });
+    if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || res.statusText); }
+    const reader = res.body.getReader(), dec = new TextDecoder(); let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true }); let nl;
+      while ((nl = buf.indexOf("\n")) >= 0) { const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1); if (line) handle(JSON.parse(line)); }
+    }
+  } catch (e) {
+    if (e.name === "AbortError") thread.append(el("div", { class: "inotice", text: "Stopped." }));
+    else toast(e.message);
+  } finally {
+    if (waiting) waiting.remove();
+    if (cur) { cur.text && rerender(); cur.node.classList.remove("streaming"); }
+    S.ideas.abort = null;
+    if ($("#ic-send")) { $("#ic-send").classList.remove("hidden"); $("#ic-stop").classList.add("hidden"); }
+    // Reload from the server: it saved exactly what was said (also after Stop).
+    try {
+      const data = await api("GET", "/api/ideas"); S.ideas.chats = data.chats;
+      if (S.ideas.chat && S.ideas.chat.id && S.view === "ideas") { S.ideas.chat = await api("GET", `/api/ideas/${S.ideas.chat.id}`); renderIdeas(); }
+    } catch (e) { /* keep what's on screen */ }
+    if ($("#ic-text")) $("#ic-text").focus();
+  }
+}
 
 // ---------- new project: shaping the goal with the assistant ----------
 // S.ga = { idea, answers: [{question, answer}], rounds: [{note, questions, answered}], goal, name, ready, started }
@@ -1824,6 +2093,7 @@ function setOnline(on) {
 
 // ---------- boot ----------
 $("#newbtn").onclick = () => { document.body.classList.remove("menu-open"); openNew(); };
+$("#ideasbtn").onclick = () => { document.body.classList.remove("menu-open"); if (S.view !== "ideas") openIdeas(); };
 $("#menubtn").onclick = () => document.body.classList.toggle("menu-open");
 $("main").addEventListener("click", () => document.body.classList.remove("menu-open"));
 document.addEventListener("keydown", (e) => {

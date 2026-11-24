@@ -25,6 +25,10 @@ class Settings:
     # Rust/Python: a check that ran 0 tests, or passed because the agent skipped
     # or deleted tests, doesn't count; the final review runs the whole suite.
     test_guard: bool = True
+    # Ideas chat: may it fetch public web pages? And Ollama's `think` option for
+    # it (None = the model's default; false = faster answers from thinking models).
+    chat_web: bool = True
+    chat_think: bool | None = None
     # Cut off a reply that keeps repeating itself mid-generation (needs stream).
     loop_guard: bool = True
     # Sampling knobs that make reasoning models loop less. None/0 = Ollama's default.

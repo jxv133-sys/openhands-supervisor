@@ -198,6 +198,7 @@ class App:
         self.job: Job | None = None
         self._lock = threading.Lock()
         self._planning: set[str] = set()
+        self._chatting: set[str] = set()
 
     # --- helpers -------------------------------------------------------
 
@@ -339,6 +340,43 @@ class App:
                                    timeout=self.settings.llm_timeout, report=report, logs=logs)
         except Exception as exc:
             raise ApiError(HTTPStatus.BAD_GATEWAY, f"drafting failed: {exc}") from exc
+
+    # --- ideas chat -----------------------------------------------------------
+
+    def ideas_stream(self, chat_id: str, text: str):
+        """Yields NDJSON-able events for one message in an ideas chat (see ideas.py)."""
+        from .ideas import IdeaStore, Tools, chat_turn
+
+        text = (text or "").strip()
+        if not text:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "write a message first")
+        store = IdeaStore(self.root)
+        try:
+            chat = store.new() if chat_id == "new" else store.get(chat_id)
+        except KeyError as exc:
+            raise ApiError(HTTPStatus.NOT_FOUND, "no such chat") from exc
+        with self._lock:
+            if chat["id"] in self._chatting:
+                raise ApiError(HTTPStatus.CONFLICT, "this chat is still answering")
+            self._chatting.add(chat["id"])
+
+        def events():
+            try:
+                yield {"type": "chat", "id": chat["id"]}
+                busy = self.job is not None and self.job.to_dict()["active"]
+                tools = Tools(self, allow_web=self.settings.chat_web)
+                turn = chat_turn(chat, text, self.settings, tools, busy=busy)
+                try:
+                    yield from turn
+                finally:
+                    turn.close()
+                    store.save(chat)  # also after Stop: the partial reply is kept
+                yield {"type": "done", "title": chat["title"]}
+            finally:
+                with self._lock:
+                    self._chatting.discard(chat["id"])
+
+        return events()
 
     def delete(self, name: str, keep_code: bool) -> dict:
         """Remove a project from the supervisor (its .supervisor folder), or,
@@ -500,6 +538,30 @@ def make_handler(app: App, token: str | None):
             self.end_headers()
             self.wfile.write(body)
 
+        def _stream(self, events) -> None:
+            """One JSON object per line, flushed as it comes; the connection
+            closes at the end (HTTP/1.0). If the page goes away (Stop), writing
+            fails and closing `events` stops the model."""
+            self.send_response(HTTPStatus.OK)
+            self.send_header("Content-Type", "application/x-ndjson")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Accel-Buffering", "no")  # no buffering behind nginx
+            self.end_headers()
+            try:
+                for event in events:
+                    self.wfile.write((json.dumps(event) + "\n").encode())
+                    self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            except Exception as exc:
+                traceback.print_exc()
+                try:
+                    self.wfile.write((json.dumps({"type": "error", "text": f"{type(exc).__name__}: {exc}"}) + "\n").encode())
+                except OSError:
+                    pass
+            finally:
+                events.close()
+
         def _json(self, status: int, data) -> None:
             self._send(status, json.dumps(data, default=str).encode(), "application/json")
 
@@ -545,6 +607,23 @@ def make_handler(app: App, token: str | None):
                         raise ApiError(HTTPStatus.BAD_REQUEST, "after must be a number") from exc
                     events, last = app.bus.since(after)
                     return self._json(HTTPStatus.OK, {"events": events, "last": last})
+                if route[:1] == ["ideas"]:
+                    from .ideas import IdeaStore
+
+                    store = IdeaStore(app.root)
+                    try:
+                        if method == "GET" and len(route) == 1:
+                            return self._json(HTTPStatus.OK, {"chats": store.list(), "model": app.settings.model})
+                        if method == "GET" and len(route) == 2:
+                            return self._json(HTTPStatus.OK, store.get(route[1]))
+                        if method == "DELETE" and len(route) == 2:
+                            store.delete(route[1])
+                            return self._json(HTTPStatus.OK, {"deleted": route[1]})
+                    except KeyError as exc:
+                        raise ApiError(HTTPStatus.NOT_FOUND, "no such chat") from exc
+                    if method == "POST" and len(route) == 3 and route[2] == "message":
+                        return self._stream(app.ideas_stream(route[1], str(self._body().get("text", ""))))
+                    raise ApiError(HTTPStatus.NOT_FOUND, "not found")
                 if method == "POST" and route == ["goal", "assist"]:
                     return self._json(HTTPStatus.OK, app.assist_goal(self._body()))
                 if method == "POST" and route == ["projects"]:
