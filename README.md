@@ -149,7 +149,8 @@ Optional `.env` settings (copy `.env.example`):
 | `WEB_TOKEN` | if set, the UI asks for this token. Anyone who can open the UI can make the agent run code in its sandbox, so set it on untrusted networks |
 
 Settings (model, context limits, restart limits) are in `supervisor.toml`; edit
-it and `docker compose restart`, no rebuild needed.
+it and `docker compose restart`, no rebuild needed. Or use the settings page
+in the UI (sliders icon, top right): no restart needed.
 
 ### Without the web UI
 
@@ -247,6 +248,16 @@ shipped file for every option with defaults. The important ones:
   `top_p = 0.95`, `top_k = 20`, `presence_penalty = 1.5` (commented out in the
   shipped `supervisor.toml`).
 - `[limits]`: when to restart and when to ask you.
+- `notes` (on by default): the agent keeps `AGENTS.md` in the project, short
+  notes on what exists, how to build and test, and what was hard to find out.
+  Each milestone starts with those notes and the file list, so the agent
+  doesn't spend its first steps (and context) re-exploring the project. The
+  project page shows the notes under **Project notes**.
+
+The **settings page** in the web UI (the sliders icon, top right) edits the same
+options. Changes are saved to `.supervisor-settings.toml` in the projects folder,
+on top of `supervisor.toml`, and apply from the next run; each changed field
+can be reset on its own, or all at once with **Reset all**.
 
 ## Notes
 

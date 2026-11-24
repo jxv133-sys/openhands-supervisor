@@ -29,10 +29,18 @@ from .config import Settings
 from .contract import DONE, PENDING, SKIPPED, STATE_DIR, Contract
 from .log import RunLog
 from .review import load_report
+from .prompts import NOTES_FILE
 
 STATIC_DIR = Path(__file__).parent / "static"
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 FILE_VIEW_LIMIT = 512 * 1024
+
+
+def _read_text(path: Path, limit: int) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")[:limit]
+    except OSError:
+        return ""
 
 
 class ApiError(Exception):
@@ -292,6 +300,7 @@ class App:
             "context": getattr(self.job.supervisor, "context", None) if self._active_job_for(name) else None,
             "final_review": self.settings.final_review,
             "running": self._active_job_for(name),
+            "notes": _read_text(path / NOTES_FILE, 20_000),
         }
 
     def files(self, name: str) -> dict:
