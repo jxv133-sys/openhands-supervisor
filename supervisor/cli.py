@@ -133,7 +133,8 @@ def cmd_web(args, settings: Settings) -> int:
     from .web import serve
 
     goal_file = os.environ.get("GOAL_FILE", "").strip()
-    serve(settings, Path(args.projects), args.host, args.port, Path(goal_file) if goal_file else None)
+    serve(settings, Path(args.projects), args.host, args.port, Path(goal_file) if goal_file else None,
+          config_path=Path(args.config))
     return 0
 
 
@@ -194,7 +195,12 @@ def main(argv: list[str] | None = None) -> int:
     s.set_defaults(func=cmd_status)
 
     args = parser.parse_args(argv)
-    settings = Settings.load(Path(args.config))
+    from .settings_page import OVERRIDES_FILE
+
+    # Settings changed in the web UI are kept next to the projects; honor them
+    # here too ($SUPERVISOR_OVERRIDES, or ./.supervisor-settings.toml).
+    overrides = Path(os.environ.get("SUPERVISOR_OVERRIDES", "").strip() or OVERRIDES_FILE)
+    settings = Settings.load(Path(args.config), overrides)
     _install_sigterm_handler()
     return args.func(args, settings)
 

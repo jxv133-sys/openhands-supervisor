@@ -8,6 +8,14 @@ from supervisor.contract import Contract
 from supervisor.log import RunLog
 from supervisor.runner import Supervisor
 
+def _sb(ws, project="/nonexistent"):
+    """A prepared sandbox around a fake workspace (the fake ignores the wrapper)."""
+    from supervisor.sandbox import Sandbox
+    sb = Sandbox(ws, project, "/workspace/project")
+    sb.ready = True
+    return sb
+
+
 DATA = Path(__file__).parent / "data"  # real cargo test / pytest output
 
 
@@ -123,7 +131,7 @@ def _sup(tmp_path, **settings):
 
 
 def test_check_with_zero_tests_fails(tmp_path):
-    res = _sup(tmp_path)._check(FakeWorkspace((DATA / "rust_nomatch.txt").read_text()), "cargo test test_x")
+    res = _sup(tmp_path)._check(_sb(FakeWorkspace((DATA / "rust_nomatch.txt").read_text())), "cargo test test_x")
     assert not res.passed and "proves nothing" in res.output
 
 
@@ -131,12 +139,12 @@ def test_check_after_skipping_a_test_fails(tmp_path):
     root = _project(tmp_path)
     sup = _sup(root)
     baseline = testguard.scan(root)
-    assert sup._check(FakeWorkspace((DATA / "py_pass.txt").read_text()), "pytest", baseline).passed
+    assert sup._check(_sb(FakeWorkspace((DATA / "py_pass.txt").read_text())), "pytest", baseline).passed
     (root / "tests" / "test_app.py").write_text("import pytest\n@pytest.mark.skip\n" + PY.split("import pytest\n", 1)[1])
-    res = sup._check(FakeWorkspace((DATA / "py_pass.txt").read_text()), "pytest", baseline)
+    res = sup._check(_sb(FakeWorkspace((DATA / "py_pass.txt").read_text())), "pytest", baseline)
     assert not res.passed and "not honestly" in res.output and "@pytest.mark.skip" in res.output
 
 
 def test_test_guard_can_be_turned_off(tmp_path):
-    res = _sup(tmp_path, test_guard=False)._check(FakeWorkspace((DATA / "rust_nomatch.txt").read_text()), "cargo test x")
+    res = _sup(tmp_path, test_guard=False)._check(_sb(FakeWorkspace((DATA / "rust_nomatch.txt").read_text())), "cargo test x")
     assert res.passed

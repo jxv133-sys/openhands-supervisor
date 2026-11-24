@@ -22,7 +22,9 @@ from .contract import DONE, SKIPPED, Contract, Milestone
 from .hostpath import host_path
 from .log import RunLog
 from .loopguard import RepetitionDetector
-from .prompts import PROJECT_DIR, handoff_note, milestone_prompt
+from .sandbox import Sandbox, SandboxError
+from .sandbox import missing as env_missing
+from .prompts import NOTES_FILE, PROJECT_DIR, handoff_note, milestone_prompt
 from .watchdog import Action, CheckResult, Decision, MilestoneState, TurnEnd, decide
 
 
@@ -64,6 +66,8 @@ class Supervisor:
         # ask = prompt in the terminal; stop/skip = unattended; callable = custom (web UI)
         self.on_escalate = on_escalate
         self._stop = threading.Event()
+        self.infra_error = ""  # set when the run stopped because the sandbox wasn't usable
+        self.sandbox: Sandbox | None = None
         self._conversation = None
         self._milestone_n = 0  # tags chat records with the milestone they belong to
         # The model's output while it's still being generated (web UI only).
@@ -131,6 +135,12 @@ class Supervisor:
         self._context_thread = threading.Thread(target=read, name="context", daemon=True)
         self._context_thread.start()
 
+    def _read_notes(self) -> str:
+        try:
+            return (self.project_dir / NOTES_FILE).read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return ""
+
     def _guard_loop(self, *texts) -> None:
         """Watch the reply being written; cut it off if it loops (see loopguard.py)."""
         if not self.settings.loop_guard or self._looping:
@@ -150,24 +160,13 @@ class Supervisor:
 
     # --- sandbox helpers ------------------------------------------------
 
-    def _exec(self, workspace, cmd: str, timeout: int) -> CheckResult:
-        started = time.monotonic()
-        try:
-            result = workspace.execute_command(_bash(cmd), cwd=PROJECT_DIR, timeout=timeout)
-        except Exception as exc:  # sandbox/API failure: report as a failed check
-            return CheckResult(False, -1, f"supervisor could not run the command: {exc}", time.monotonic() - started)
-        output = (result.stdout or "") + ("\n" + result.stderr if result.stderr else "")
-        if getattr(result, "timeout_occurred", False):
-            output += f"\n(command timed out after {timeout}s)"
-        return CheckResult(result.exit_code == 0, result.exit_code, output[-8000:], time.monotonic() - started)
-
-    def _check(self, workspace, cmd: str, baseline: testguard.TestScan | None = None) -> CheckResult:
+    def _check(self, sandbox: Sandbox, cmd: str, baseline: testguard.TestScan | None = None) -> CheckResult:
         """Run a check, and only count a pass that really tested something: it
         must have run at least one test (if it's cargo test / pytest), and, if
         `baseline` is given, the agent must not have skipped or deleted tests
         since then (see testguard.py)."""
-        res = self._exec(workspace, cmd, self.settings.check_timeout)
-        if not res.passed or not self.settings.test_guard:
+        res = sandbox.run(cmd, self.settings.check_timeout)
+        if res.infra or not res.passed or not self.settings.test_guard:
             return res
         reason = testguard.zero_tests(res.output)
         if reason:
@@ -178,13 +177,27 @@ class Supervisor:
                 return CheckResult(False, 1, res.output + testguard.problems_feedback(found), res.seconds)
         return res
 
-    def _setup(self, workspace) -> None:
-        for cmd in self.contract.setup:
-            self.log.say(f"setup: {cmd}")
-            res = self._exec(workspace, cmd, self.settings.setup_timeout)
-            self.log.event("setup", cmd=cmd, exit_code=res.exit_code, output=res.output[-2000:])
-            if not res.passed:
-                self.log.say(f"setup command failed (exit {res.exit_code}); continuing anyway.\n{res.output[-1500:]}")
+    def _prepare(self, sandbox: Sandbox) -> None:
+        """Verify the project folder is mounted, then run setup: the contract's
+        commands and the project's own .openhands/setup.sh. Any failure raises
+        SandboxError: no check runs in a sandbox that isn't ready."""
+        n = len(self.contract.setup)
+        self.log.say(f"Preparing the sandbox: checking the project folder is mounted, then {n} setup command(s)"
+                     " and .openhands/setup.sh if the project has one.")
+        try:
+            sandbox.prepare(self.contract.setup)
+        finally:
+            for entry in sandbox.setup_log:
+                self.log.event("setup", **entry)
+        self.log.say("Sandbox ready.")
+
+    def _infra(self, exc: Exception) -> None:
+        """An infrastructure error: say so plainly. Nothing about the project was judged."""
+        self.infra_error = str(exc)
+        self.log.event("infra_error", error=self.infra_error[:3000])
+        self.log.say(f"Sandbox problem; the run stopped and no check result was counted:\n{self.infra_error}")
+        self.log.chat({"role": "system", "level": "error",
+                       "text": f"Sandbox problem (not a project failure): {self.infra_error}"}, milestone=self._milestone_n)
 
     # --- main loop --------------------------------------------------------
 
@@ -224,29 +237,35 @@ class Supervisor:
             working_dir=PROJECT_DIR,
             volumes=[f"{mount_source}:{PROJECT_DIR}"],
         ) as workspace:
+            sandbox = self.sandbox = Sandbox(workspace, self.project_dir, PROJECT_DIR, setup_timeout=s.setup_timeout)
             try:
                 self._check_stop()
-                self._setup(workspace)
+                self._prepare(sandbox)
                 round_n = 0
                 while True:
                     for milestone in self.contract.pending():
                         if milestone.status != "pending":  # e.g. skipped meanwhile
                             continue
                         self._check_stop()
-                        self._run_milestone(workspace, agent, milestone)
+                        self._run_milestone(sandbox, agent, milestone)
                     if not s.final_review:
                         break
                     self._check_stop()
                     round_n += 1
                     # The last round only reports, so the review always ends.
-                    if not self._final_review(workspace, round_n, may_add=round_n <= s.review_rounds):
+                    if not self._final_review(sandbox, round_n, may_add=round_n <= s.review_rounds):
                         break
+            except SandboxError as exc:
+                self._infra(exc)
+                return False
             except Quit:
                 self.log.say("Stopped. Progress is saved; run again to resume.")
                 return False
             except KeyboardInterrupt:
                 self.log.say("Interrupted. Progress is saved; run again to resume.")
                 return False
+            finally:
+                sandbox.close()
 
         done = len(self.contract.completed())
         total = len(self.contract.milestones)
@@ -258,7 +277,7 @@ class Supervisor:
 
     # --- final review -----------------------------------------------------
 
-    def _final_review(self, workspace, round_n: int, may_add: bool) -> bool:
+    def _final_review(self, sandbox: Sandbox, round_n: int, may_add: bool) -> bool:
         """Check the finished project as a whole (see review.py). Returns True
         if it found work for the agent (milestones re-opened or added)."""
         s = self.settings
@@ -272,10 +291,22 @@ class Supervisor:
             if m.status != "done":
                 continue
             self._check_stop()
-            res = self._check(workspace, m.check)
+            res = self._check(sandbox, m.check)
             self.log.chat({"role": "check", "command": m.check, "passed": res.passed, "exit_code": res.exit_code,
                            "text": res.output[-4000:], "decision": "regression check",
                            "reason": f"milestone {i}: {m.title}", "changed": [], "seconds": round(res.seconds, 1)})
+            if res.infra:  # the sandbox, not the project: never a regression
+                report["environment"].append({"milestone": i, "title": m.title, "kind": "infra", "detail": res.infra})
+                continue
+            if not res.passed and m.env_changes:
+                # It passed during its milestone in a sandbox with these changes
+                # outside the project. If this sandbox lacks them, the failure
+                # says the environment differs, not that the project regressed.
+                gone = env_missing(m.env_changes, sandbox.fingerprint())
+                if gone:
+                    report["environment"].append({"milestone": i, "title": m.title, "kind": "mismatch", "missing": gone,
+                                                  "output": res.output[-2000:]})
+                    continue
             if not res.passed:
                 report["regressions"].append({"milestone": i, "title": m.title, "output": res.output[-2000:]})
                 if may_add:
@@ -283,6 +314,11 @@ class Supervisor:
                     m.restarts = 0
                     m.notes.append(review.regression_note(res.output))
 
+        if report["environment"] and not report["regressions"]:
+            # Requirement checks would run in the same unreliable environment.
+            report["verdict"] = "environment"
+            self._finish_review(report, may_add)
+            return False
         if report["regressions"]:
             report["verdict"] = "regressions"
             self._finish_review(report, may_add)
@@ -305,7 +341,12 @@ class Supervisor:
             self._check_stop()
             entry = {"requirement": req["requirement"], "check": req["check"], "passed": None, "output": ""}
             if req["check"]:
-                res = self._check(workspace, req["check"])
+                res = self._check(sandbox, req["check"])
+                if res.infra:
+                    report["environment"].append({"title": req["requirement"], "kind": "infra", "detail": res.infra})
+                    entry["output"] = f"not judged: {res.infra}"
+                    report["requirements"].append(entry)
+                    continue
                 entry["passed"], entry["output"] = res.passed, res.output[-2000:]
                 self.log.chat({"role": "check", "command": req["check"], "passed": res.passed, "exit_code": res.exit_code,
                                "text": res.output[-4000:], "decision": "requirement",
@@ -319,7 +360,8 @@ class Supervisor:
             report["requirements"].append(entry)
 
         failed = [r for r in report["requirements"] if r["passed"] is False]
-        report["verdict"] = "fail" if failed else "error" if report["error"] else "pass"
+        report["verdict"] = ("environment" if report["environment"] else "fail" if failed
+                             else "error" if report["error"] else "pass")
         self._finish_review(report, may_add)
         return bool(report["added"])
 
@@ -332,6 +374,18 @@ class Supervisor:
         unchecked = sum(r["passed"] is None for r in reqs)
         if report["verdict"] == "error":
             text = f"Final review could not run: {report['error']}"
+        elif report["verdict"] == "environment":
+            lines = []
+            for e in report["environment"]:
+                what = f"{e.get('milestone', '')}. {e['title']}".lstrip(". ")
+                if e["kind"] == "mismatch":
+                    lines.append(f"- {what}: passed during its milestone in a sandbox with changes this one lacks: "
+                                 + "; ".join(e["missing"]))
+                else:
+                    lines.append(f"- {what}: {e['detail']}")
+            text = ("Final review: environment problems, not project regressions. These checks can't be judged in "
+                    "this sandbox:\n" + "\n".join(lines) + "\nDeclare what the project needs outside its folder in "
+                    ".openhands/setup.sh (or the plan's setup commands), then run the review again.")
         elif report["verdict"] == "regressions":
             names = ", ".join(f"{r['milestone']}. {r['title']}" for r in report["regressions"])
             text = f"Final review: {len(report['regressions'])} finished milestone(s) are broken again: {names}."
@@ -351,7 +405,7 @@ class Supervisor:
                        unchecked=unchecked, regressions=len(report["regressions"]), added=report["added"],
                        error=report["error"])
 
-    def _run_milestone(self, workspace, agent, milestone: Milestone) -> None:
+    def _run_milestone(self, sandbox: Sandbox, agent, milestone: Milestone) -> None:
         from openhands.sdk import Conversation
 
         n = self.contract.index_of(milestone)
@@ -364,6 +418,8 @@ class Supervisor:
         self._milestone_n = n
         # The tests as they are now: the agent may add tests, not skip or delete these.
         baseline = testguard.scan(self.project_dir)
+        notes_at_start = self._read_notes()
+        notes_reminded = env_reminded = False
 
         while True:  # one iteration per conversation
             self.log.chat(
@@ -378,13 +434,14 @@ class Supervisor:
             collector = TurnCollector(on_activity=self._activity)
             conversation = Conversation(
                 agent=agent,
-                workspace=workspace,
+                workspace=sandbox.workspace,
                 callbacks=[collector.on_event],
                 max_iteration_per_run=self.settings.iterations_per_turn,
                 stuck_detection=True,
             )
             self._conversation = conversation
-            message = milestone_prompt(self.contract, milestone, handoff)
+            notes = self._read_notes() if self.settings.notes else None  # fresh each conversation
+            message = milestone_prompt(self.contract, milestone, handoff, notes=notes)
             try:
                 while True:  # one iteration per turn
                     before = progress.snapshot(self.project_dir)
@@ -415,9 +472,21 @@ class Supervisor:
                     agent_seconds = time.monotonic() - started
                     tokens = _token_usage(conversation)
                     check_started = time.monotonic()
-                    check = self._check(workspace, milestone.check, baseline)
+                    check = self._check(sandbox, milestone.check, baseline)
                     check_seconds = time.monotonic() - check_started
+                    if check.infra:  # the sandbox broke: that's not the agent's failure to judge
+                        raise SandboxError(f"while checking milestone {n} ({milestone.title}): {check.infra}")
                     decision = decide(report, check, milestone.check, state, limits)
+                    drift = sandbox.drift() if decision.action == Action.DONE else []
+                    reminder = completion_reminder(
+                        decision,
+                        notes=self.settings.notes and not notes_reminded and self._read_notes() == notes_at_start,
+                        drift=[] if env_reminded else drift,
+                    )
+                    if reminder is not None:
+                        notes_reminded = notes_reminded or self.settings.notes
+                        env_reminded = env_reminded or bool(drift)
+                        decision = reminder
                     self.log.chat(
                         {
                             "role": "check",
@@ -462,6 +531,10 @@ class Supervisor:
                     if decision.action == Action.DONE:
                         milestone.status = DONE
                         milestone.restarts = state.restarts
+                        # What this pass relied on outside the project folder, so a
+                        # later review in a fresh sandbox can tell "environment
+                        # differs" from "project regressed".
+                        milestone.env_changes = drift[:30]
                         self.contract.save(self.project_dir)
                         self.log.say(f"Milestone {n} done.")
                         return
@@ -559,6 +632,36 @@ class Supervisor:
                 return "skip", ""
             if answer:
                 return "guidance", answer
+
+
+NOTES_REMINDER = (
+    f"update `{NOTES_FILE}` (create it if it doesn't exist) so the next milestone starts with what you know: "
+    "files and what each does, decisions and why, how to build, run and test, known problems. Keep it short."
+)
+
+
+def env_reminder(drift: list[str]) -> str:
+    listed = "\n".join(f"  - {d}" for d in drift[:15])
+    return (
+        "this sandbox has changes outside the project folder that a fresh sandbox won't have:\n"
+        f"{listed}\n  The final review and any resumed run start from a fresh sandbox, so a check that needs "
+        "these would fail there. If the project or its checks need them, put the commands that create them in "
+        "`.openhands/setup.sh` (it runs in every fresh sandbox); otherwise make the project work without them."
+    )
+
+
+def completion_reminder(decision: Decision, notes: bool, drift: list[str]) -> Decision | None:
+    """A passing milestone gets one extra turn, at most, to (a) update the
+    project notes if it didn't, and (b) declare sandbox changes outside the
+    project folder it may depend on. One combined message, once per milestone:
+    neither ever blocks a milestone."""
+    if decision.action != Action.DONE or not (notes or drift):
+        return None
+    asks = ([NOTES_REMINDER] if notes else []) + ([env_reminder(drift)] if drift else [])
+    body = "\n".join(f"{i}. {a[0].upper()}{a[1:]}" for i, a in enumerate(asks, 1)) if len(asks) > 1 else asks[0][0].upper() + asks[0][1:]
+    reason = " and ".join((["notes not updated"] if notes else []) + (["sandbox changed outside the project"] if drift else []))
+    return Decision(Action.NUDGE, f"check passes; asked the agent to finish up ({reason})",
+                    f"The check passes. Before you finish:\n{body}\nThen call finish.")
 
 
 def _token_usage(conversation) -> dict:

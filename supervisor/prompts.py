@@ -6,9 +6,31 @@ from __future__ import annotations
 from .contract import Contract, Milestone
 
 PROJECT_DIR = "/workspace/project"
+NOTES_FILE = "AGENTS.md"  # the cross-tool name for "notes for coding agents"
+NOTES_LIMIT = 4000
+
+NOTES_RULE = (
+    f"- Before calling finish, update `{NOTES_FILE}` (project notes for whoever works on this next, "
+    "including you in a fresh conversation): what exists now (files and what each does), decisions and why, "
+    "how to build, run and test, and known problems. Keep it short (under about 60 lines): rewrite parts "
+    "that are out of date instead of appending."
+)
 
 
-def milestone_prompt(contract: Contract, milestone: Milestone, handoff: str = "") -> str:
+def notes_section(notes: str) -> str:
+    """The project notes as they go into the agent's instructions."""
+    notes = notes.strip()
+    if not notes:
+        return (f"There are no project notes yet: create `{NOTES_FILE}` in the project root in this milestone "
+                "(see the rules below).")
+    if len(notes) > NOTES_LIMIT:
+        notes = notes[:NOTES_LIMIT] + "\n...(cut: keep the notes shorter)"
+    return (f"Project notes from earlier milestones (`{NOTES_FILE}`, kept by you; trust them, and fix them "
+            f"if they're wrong):\n```markdown\n{notes}\n```")
+
+
+def milestone_prompt(contract: Contract, milestone: Milestone, handoff: str = "", notes: str | None = None) -> str:
+    """`notes`: AGENTS.md's text ("" if missing), or None when project notes are turned off."""
     n = contract.index_of(milestone)
     total = len(contract.milestones)
     done = contract.completed()
@@ -18,6 +40,7 @@ def milestone_prompt(contract: Contract, milestone: Milestone, handoff: str = ""
         f"You are working on a project in `{PROJECT_DIR}`.",
         f"Overall goal of the project: {contract.goal}",
         f"Milestones already completed (do not redo them):\n{done_text}",
+        *([notes_section(notes)] if notes is not None else []),
         f"YOUR TASK NOW, milestone {n} of {total}: {milestone.title}",
     ]
     if milestone.instructions:
@@ -38,9 +61,15 @@ def milestone_prompt(contract: Contract, milestone: Milestone, handoff: str = ""
         "The supervisor checks for this and will not accept it.\n"
         "- Declare every dependency (Cargo.toml, pyproject.toml or requirements.txt). The project must work "
         "on a fresh machine, not only in this sandbox.\n"
+        "- The supervisor runs the check in a fresh login shell started in the project folder, not in your "
+        "terminal session: what you `export`, `cd` into or activate in your terminal does not apply to it. If the "
+        "project or its checks need anything outside the project folder (a link, a system-wide package, a tool), "
+        "put the commands in `.openhands/setup.sh`: it runs in every fresh sandbox. Only doing it by hand makes "
+        "the check pass here and fail later.\n"
         "- Log important steps and every error at debug level (Rust: log/env_logger, RUST_LOG=debug; "
         "Python: logging). Error messages say what failed and with which input.\n"
-        "- When the check command passes, call the finish tool with a one-line summary."
+        + (NOTES_RULE + "\n" if notes is not None else "")
+        + "- When the check command passes, call the finish tool with a one-line summary."
     )
     if handoff:
         parts.append(handoff)

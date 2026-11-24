@@ -6,6 +6,14 @@ from supervisor.contract import Contract
 from supervisor.log import RunLog
 from supervisor.runner import Supervisor
 
+def _sb(ws, project="/nonexistent"):
+    """A prepared sandbox around a fake workspace (the fake ignores the wrapper)."""
+    from supervisor.sandbox import Sandbox
+    sb = Sandbox(ws, project, "/workspace/project")
+    sb.ready = True
+    return sb
+
+
 
 class Result:
     def __init__(self, ok, out=""):
@@ -48,7 +56,7 @@ REQS = [
 def test_all_requirements_pass(tmp_path, monkeypatch):
     sup = _supervisor(tmp_path)
     _reviewer(monkeypatch, REQS)
-    assert sup._final_review(FakeWorkspace(), 1, may_add=True) is False
+    assert sup._final_review(_sb(FakeWorkspace()), 1, may_add=True) is False
     report = review.load_report(tmp_path)
     assert report["verdict"] == "pass"
     assert [r["passed"] for r in report["requirements"]] == [True, True, None]
@@ -58,14 +66,14 @@ def test_all_requirements_pass(tmp_path, monkeypatch):
 def test_failing_requirement_becomes_milestone(tmp_path, monkeypatch):
     sup = _supervisor(tmp_path)
     _reviewer(monkeypatch, REQS)
-    assert sup._final_review(FakeWorkspace(failing={"req-list"}), 1, may_add=True) is True
+    assert sup._final_review(_sb(FakeWorkspace(failing={"req-list"})), 1, may_add=True) is True
     added = sup.contract.milestones[-1]
     assert added.check == "req-list" and added.status == "pending" and added.source == "review"
     assert "list shows tasks" in added.title
     assert Contract.load(tmp_path).milestones[-1].check == "req-list"  # saved
     # Next round: same failure, but it was already tried as a milestone -> not added twice.
     added.status = "skipped"
-    assert sup._final_review(FakeWorkspace(failing={"req-list"}), 2, may_add=True) is False
+    assert sup._final_review(_sb(FakeWorkspace(failing={"req-list"})), 2, may_add=True) is False
     assert len(sup.contract.milestones) == 3
     assert review.load_report(tmp_path)["verdict"] == "fail"
 
@@ -73,7 +81,7 @@ def test_failing_requirement_becomes_milestone(tmp_path, monkeypatch):
 def test_last_round_only_reports(tmp_path, monkeypatch):
     sup = _supervisor(tmp_path)
     _reviewer(monkeypatch, REQS)
-    assert sup._final_review(FakeWorkspace(failing={"req-add"}), 3, may_add=False) is False
+    assert sup._final_review(_sb(FakeWorkspace(failing={"req-add"})), 3, may_add=False) is False
     assert len(sup.contract.milestones) == 2
     assert review.load_report(tmp_path)["verdict"] == "fail"
 
@@ -85,7 +93,7 @@ def test_regression_reopens_milestone_and_skips_acceptance(tmp_path, monkeypatch
         raise AssertionError("fix regressions before reviewing requirements")
 
     monkeypatch.setattr(review, "ask_reviewer", no_llm)
-    assert sup._final_review(FakeWorkspace(failing={"check1"}), 1, may_add=True) is True
+    assert sup._final_review(_sb(FakeWorkspace(failing={"check1"})), 1, may_add=True) is True
     m1 = sup.contract.milestones[0]
     assert m1.status == "pending" and "broken again" in m1.notes[-1]
     assert review.load_report(tmp_path)["regressions"][0]["milestone"] == 1
@@ -98,7 +106,7 @@ def test_reviewer_failure_is_reported_not_raised(tmp_path, monkeypatch):
         raise ConnectionError("ollama unreachable")
 
     monkeypatch.setattr(review, "ask_reviewer", down)
-    assert sup._final_review(FakeWorkspace(), 1, may_add=True) is False
+    assert sup._final_review(_sb(FakeWorkspace()), 1, may_add=True) is False
     report = review.load_report(tmp_path)
     assert report["verdict"] == "error" and "unreachable" in report["error"]
 

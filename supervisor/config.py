@@ -45,6 +45,9 @@ class Settings:
     # of the goal end to end; failures become new milestones. Rounds of that.
     final_review: bool = True
     review_rounds: int = 2
+    # The agent keeps AGENTS.md (project notes) up to date and sees it at the
+    # start of every milestone, so fresh conversations don't forget decisions.
+    notes: bool = True
     limits: Limits = field(default_factory=Limits)
 
     @property
@@ -52,20 +55,25 @@ class Settings:
         return self.ollama_url.rstrip("/") + "/v1"
 
     @classmethod
-    def load(cls, path: Path | None) -> Settings:
+    def load(cls, path: Path | None, overrides: Path | None = None) -> Settings:
+        """supervisor.toml, then the settings changed in the web UI (a second
+        TOML file of the same shape, kept where it's writable)."""
         settings = cls()
-        if path is None or not Path(path).exists():
-            return settings
-        data = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+        for source in (path, overrides):
+            if source is not None and Path(source).exists():
+                settings.apply(tomllib.loads(Path(source).read_text(encoding="utf-8")), source)
+        return settings
+
+    def apply(self, data: dict, source="settings") -> None:
         flat = {**data.get("ollama", {}), **data.get("agent", {})}
-        known = {f.name for f in fields(cls)} - {"limits"}
+        known = {f.name for f in fields(type(self))} - {"limits"}
         for key, value in flat.items():
             if key not in known:
-                raise ValueError(f"unknown setting {key!r} in {path}")
-            setattr(settings, key, value)
+                raise ValueError(f"unknown setting {key!r} in {source}")
+            # TOML has no null: "" means "not set" for optional settings (top_p...)
+            setattr(self, key, None if value == "" else value)
         limit_names = {f.name for f in fields(Limits)}
         for key, value in data.get("limits", {}).items():
             if key not in limit_names:
-                raise ValueError(f"unknown limit {key!r} in {path}")
-            setattr(settings.limits, key, value)
-        return settings
+                raise ValueError(f"unknown limit {key!r} in {source}")
+            setattr(self.limits, key, value)

@@ -119,7 +119,10 @@ class Job:
             else:
                 self._set("running")
             ok = supervisor.run()
-            if self._stop_requested or (not ok and supervisor._stop.is_set()):
+            infra = getattr(supervisor, "infra_error", "")
+            if infra:  # the sandbox wasn't usable: say that, not "the project failed"
+                self._set("failed", f"Sandbox problem; nothing was judged. {infra[:600]}")
+            elif self._stop_requested or (not ok and supervisor._stop.is_set()):
                 self._set("stopped", "Stopped. Progress is saved; press Run to resume.")
             elif ok:
                 self._set("finished", "All milestones done." + _review_summary(path))
@@ -192,10 +195,19 @@ class Job:
 
 
 class App:
-    def __init__(self, settings: Settings, projects_root: Path, goal_file: Path | None = None):
+    def __init__(self, settings: Settings, projects_root: Path, goal_file: Path | None = None,
+                 config_path: Path | None = None):
+        from .settings_page import OVERRIDES_FILE
+
         self.settings = settings
         self.root = Path(projects_root).resolve()
         self.root.mkdir(parents=True, exist_ok=True)
+        # Settings changed in the UI live next to the projects (supervisor.toml
+        # is often mounted read-only) and apply on top of it.
+        self.config_path = config_path
+        self.overrides_path = self.root / OVERRIDES_FILE
+        if config_path is not None:
+            self.settings = Settings.load(config_path, self.overrides_path)
         self.goal_file = goal_file
         self.bus = EventBus()
         self.job: Job | None = None
@@ -465,6 +477,36 @@ class App:
         self.bus.publish({"kind": "contract", "project": name, "deleted": True})
         return {"deleted": name, "kept_code": keep_code}
 
+    def settings_view(self) -> dict:
+        from . import settings_page
+        from .modelinfo import _get
+
+        data = settings_page.view(self.config_path, self.overrides_path)
+        data["running"] = self.job is not None and self.job.to_dict()["active"]
+        try:  # the models Ollama has, for the model field's suggestions
+            tags = _get(self.settings.ollama_url.rstrip("/") + "/api/tags", 3)
+            data["models"] = sorted(m.get("name", "") for m in tags.get("models", []) if m.get("name"))
+        except Exception:
+            data["models"] = []
+        return data
+
+    def save_settings(self, values: dict) -> dict:
+        from . import settings_page
+
+        if not isinstance(values, dict) or not values:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "nothing to save")
+        try:
+            self.settings = settings_page.save(self.config_path, self.overrides_path, values)
+        except ValueError as exc:
+            raise ApiError(HTTPStatus.BAD_REQUEST, str(exc)) from exc
+        return self.settings_view()
+
+    def reset_settings(self) -> dict:
+        from . import settings_page
+
+        self.settings = settings_page.reset(self.config_path, self.overrides_path)
+        return self.settings_view()
+
     def stats(self, name: str) -> dict:
         from . import stats
 
@@ -574,6 +616,8 @@ def _review_summary(path: Path) -> str:
         return ""
     if report.get("verdict") == "error":
         return " The final review could not run (see the review card)."
+    if report.get("verdict") == "environment":
+        return f" Final review: {len(report.get('environment') or [])} check(s) couldn't be judged (environment problem, not a regression)."
     if report.get("verdict") == "regressions":
         return f" Final review: {len(report.get('regressions') or [])} milestone(s) broken again."
     reqs = report.get("requirements") or []
@@ -679,6 +723,12 @@ def make_handler(app: App, token: str | None):
                     raise ApiError(HTTPStatus.UNAUTHORIZED, "token required")
                 route = parts[1:]
 
+                if route == ["settings"] and method == "GET":
+                    return self._json(HTTPStatus.OK, app.settings_view())
+                if route == ["settings"] and method == "PUT":
+                    return self._json(HTTPStatus.OK, app.save_settings(self._body().get("values")))
+                if route == ["settings", "reset"] and method == "POST":
+                    return self._json(HTTPStatus.OK, app.reset_settings())
                 if method == "GET" and route == ["model"]:
                     from . import modelinfo
 
@@ -777,9 +827,10 @@ def make_handler(app: App, token: str | None):
     return Handler
 
 
-def serve(settings: Settings, projects_root: Path, host: str, port: int, goal_file: Path | None = None) -> None:
+def serve(settings: Settings, projects_root: Path, host: str, port: int, goal_file: Path | None = None,
+          config_path: Path | None = None) -> None:
     token = os.environ.get("WEB_TOKEN") or None
-    app = App(settings, projects_root, goal_file)
+    app = App(settings, projects_root, goal_file, config_path=config_path)
     server = ThreadingHTTPServer((host, port), make_handler(app, token))
     server.daemon_threads = True
     shown = "localhost" if host in ("0.0.0.0", "") else host

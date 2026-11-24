@@ -36,6 +36,10 @@ class CheckResult:
     exit_code: int
     output: str  # stdout+stderr, already trimmed to a tail
     seconds: float = 0.0  # how long the command ran
+    # Set when the command couldn't run in a usable environment (project folder
+    # not mounted, sandbox API error...). Such a result says nothing about the
+    # project: callers report it as an infrastructure error, never a failure.
+    infra: str = ""
 
 
 class Action(str, Enum):

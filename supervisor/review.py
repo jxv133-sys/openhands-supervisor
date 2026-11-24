@@ -219,8 +219,9 @@ def new_report(round_n: int) -> dict:
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "round": round_n,
         "regressions": [],    # [{milestone, title, output}]
+        "environment": [],    # checks that couldn't be judged: [{milestone?, title, kind: infra|mismatch, ...}]
         "requirements": [],   # [{requirement, check, passed (bool|None), output}]
         "added": [],          # titles of milestones added for failing requirements
         "error": "",          # reviewer could not run
-        "verdict": "",        # pass | fail | regressions | error
+        "verdict": "",        # pass | fail | regressions | environment | error
     }

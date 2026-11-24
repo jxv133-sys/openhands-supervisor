@@ -29,6 +29,10 @@ class Milestone:
     restarts: int = 0
     notes: list[str] = field(default_factory=list)  # user guidance added on escalation
     source: str = ""  # "" = planned; "review" = added by the final review
+    # Changes outside the project folder the sandbox had when this milestone
+    # passed (see sandbox.py): lets a later review in a fresh sandbox tell
+    # "the environment differs" from "the project regressed".
+    env_changes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -88,6 +92,7 @@ class Contract:
                     restarts=int(m.get("restarts", 0)),
                     notes=[str(n) for n in m.get("notes", [])],
                     source=str(m.get("source", "") or ""),
+                    env_changes=[str(c) for c in m.get("env_changes", []) or []],
                 )
             )
         setup = [str(s).strip() for s in data.get("setup", []) if str(s).strip()]
