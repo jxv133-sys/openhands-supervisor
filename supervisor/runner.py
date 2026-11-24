@@ -443,7 +443,8 @@ class Supervisor:
             )
             self._conversation = conversation
             notes = self._read_notes() if self.settings.notes else None  # fresh each conversation
-            message = milestone_prompt(self.contract, milestone, handoff, notes=notes)
+            message = milestone_prompt(self.contract, milestone, handoff, notes=notes,
+                                       tree=progress.file_tree(self.project_dir, limit=60))
             try:
                 while True:  # one iteration per turn
                     before = progress.snapshot(self.project_dir)

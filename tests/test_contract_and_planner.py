@@ -135,3 +135,18 @@ def test_bug_report_drafts_a_regression_fix(monkeypatch):
     assert len(out["instructions"]) < 6000  # logs are cut to their tail
     p = sent["prompt"]
     assert "regression test" in p and "src/storage.rs:12:40" in p and "it crashed" in p
+
+
+def test_prompt_keeps_project_notes_and_user_guidance_apart():
+    c = Contract.from_dict(RAW)
+    c.milestones[1].notes.append("use clap")
+    p = milestone_prompt(c, c.milestones[1], notes="Build: cargo build. Store is tasks.json.", tree="Cargo.toml\nsrc/main.rs")
+    assert "Store is tasks.json" in p and "no project notes yet" not in p
+    assert "Guidance from the user:\n- use clap" in p
+    assert "src/main.rs" in p and "AGENTS.md" in p
+    fresh = milestone_prompt(c, c.milestones[0], notes="")
+    assert "no project notes yet" in fresh and "Guidance from the user" not in fresh
+    off = milestone_prompt(c, c.milestones[0], notes=None)
+    assert "AGENTS.md" not in off
+    # on a restart the handoff carries the file list; don't send it twice
+    assert milestone_prompt(c, c.milestones[0], handoff="HANDOFF", tree="UNIQUE_TREE").count("UNIQUE_TREE") == 0
