@@ -238,6 +238,8 @@
   #live { padding: 0 20px 40px; }
   .msg.live { border-style: dashed; border-color: var(--accent); }
   .msg.live > .who .state { color: var(--dim); font-weight: 400; text-transform: none; }
+  .msg.live.acting .body::after { content: none; }
+  .msg.live .lthink.shimmer { color: transparent; }
   .msg.live .body::after { content: "▍"; color: var(--accent); animation: blink 1s steps(2) infinite; margin-left: 1px; }
   .msg.live .lthink { margin: 2px 10px 4px; padding: 6px 8px; border-left: 2px solid var(--border); color: var(--dim);
     font-size: 12.5px; white-space: pre-wrap; word-break: break-word; max-height: 12em; overflow: auto; }
@@ -1433,11 +1435,11 @@ function liveStream(ev) {
   if (!S.live) startLive({ seq: 0, text: "", thinking: "" });
   S.live.seq = ev.seq;
   S.live.text += ev.text || ""; S.live.thinking += ev.thinking || "";
-  S.lastActivityAt = Date.now();
+  S.lastActivityAt = S.live.lastAt = Date.now();
   renderLive();
 }
 function startLive(snap) {
-  S.live = { seq: snap.seq, text: snap.text || "", thinking: snap.thinking || "", startedAt: Date.now(), node: null };
+  S.live = { seq: snap.seq, text: snap.text || "", thinking: snap.thinking || "", startedAt: Date.now(), lastAt: Date.now(), node: null };
 }
 function dropLive() {
   if (S.live && S.live.node) S.live.node.remove();
@@ -1454,17 +1456,46 @@ function renderLive() {
     L.node = el("div", { class: "msg agent live" }, el("div", { class: "who" }, "Agent", L.anim, L.state), L.think, L.body);
     box.prepend(L.node);
   }
+  // The SDK streams reasoning and reply text, but not tool calls. When the
+  // stream goes quiet without the finished step arriving, the model is almost
+  // always writing a tool call (a file's content, a command): say so.
+  const quiet = Date.now() - L.lastAt;
+  const acting = quiet > 2500;
+  const guess = acting ? guessAction(L.thinking + "\n" + L.text) : null;
   const showThinking = $("#f-thinking").checked;
   L.think.classList.toggle("hidden", !L.thinking);
   L.think.classList.toggle("collapsed", !showThinking);
-  if (showThinking) { L.think.textContent = L.thinking; L.think.scrollTop = L.think.scrollHeight; }
-  else L.think.textContent = `thinking... (${L.thinking.trim().split(/\s+/).length} words; tick "thinking" to watch)`;
+  L.think.classList.toggle("shimmer", !showThinking && !acting);
+  if (showThinking) { if (L.think.textContent !== L.thinking) { L.think.textContent = L.thinking; L.think.scrollTop = L.think.scrollHeight; } }
+  else L.think.textContent = lastSentence(L.thinking);  // one moving line instead of a wall of text
   L.body.textContent = L.text;
   L.body.classList.toggle("hidden", !L.text && !!L.thinking);
-  setAnim(L.anim, L.text ? "type" : "think");
-  L.state.textContent = `${L.text ? "writing" : "thinking"} · ${duration((Date.now() - L.startedAt) / 1000)}`;
+  L.node.classList.toggle("acting", acting);
+  setAnim(L.anim, acting ? guess.kind : L.text ? "type" : "think");
+  L.state.textContent = acting ? `writing ${guess.what} · ${duration(quiet / 1000)}`
+    : `${L.text ? "writing" : "thinking"} · ${duration((Date.now() - L.startedAt) / 1000)}`;
+  L.state.title = acting ? "The model is writing its next step (file contents or a command). It shows up here once it's complete." : "";
   renderLiveStatus();
   scrollFeed(false);
+}
+// The latest ~160 characters of the thinking as one line: a phrase that keeps
+// moving, never a single stray word.
+function lastSentence(text) {
+  const flat = text.replace(/\s+/g, " ").trim();
+  if (flat.length <= 160) return flat;
+  const cut = flat.slice(-160);
+  return "…" + cut.slice(cut.indexOf(" ") + 1);
+}
+// What the model is probably writing, from what it said last: the file name or
+// command it mentioned most recently. A guess, so it's labelled "(probably)".
+function guessAction(text) {
+  const tail = text.slice(-800);
+  let best = null;
+  for (const m of tail.matchAll(/(?:[\w.-]+\/)*[\w-]+\.(?:rs|py|toml|css|scss|html?|js|mjs|ts|tsx|jsx|json|md|txt|ya?ml|sh|cfg|ini|sql|lock|env)\b/gi))
+    if (!best || m.index >= best.at) best = { at: m.index, kind: "doc", what: `${m[0].split("/").pop()} (probably)` };
+  for (const m of tail.matchAll(/`((?:cargo|python3?|pytest|pip|npm|npx|node|rustc|git|bash|sh|ls|cat|mkdir|make)\b[^`\n]{0,60})`/g))
+    if (!best || m.index >= best.at) best = { at: m.index, kind: "term", what: `\`${m[1].trim()}\` (probably)` };
+  return best || { kind: "gear", what: "the next step" };
 }
 // One line under the chat: what's happening right now, and for how long.
 function renderLiveStatus() {
